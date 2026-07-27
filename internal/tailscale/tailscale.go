@@ -7,8 +7,12 @@ package tailscale
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // Peer is one online tailnet machine.
@@ -110,8 +114,61 @@ func toPeer(n *node, self bool) Peer {
 	}
 }
 
+var (
+	binOnce sync.Once
+	binPath string
+)
+
+// resolveBin finds the tailscale CLI. It checks PATH first, then the standard
+// per-OS install locations — critical on macOS, where the CLI ships INSIDE the
+// app bundle and is not on PATH by default (so a plain "tailscale" exec fails
+// and no peers are ever found), and on Windows where it lives under Program
+// Files. GUI apps launched from Finder/Explorer also get a minimal PATH, so we
+// must probe absolute paths regardless.
+func resolveBin() string {
+	binOnce.Do(func() {
+		if p, err := exec.LookPath("tailscale"); err == nil {
+			binPath = p
+			return
+		}
+		var candidates []string
+		switch runtime.GOOS {
+		case "darwin":
+			candidates = []string{
+				"/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+				"/usr/local/bin/tailscale",
+				"/opt/homebrew/bin/tailscale",
+			}
+		case "windows":
+			pf := os.Getenv("ProgramFiles")
+			if pf == "" {
+				pf = `C:\Program Files`
+			}
+			candidates = []string{filepath.Join(pf, "Tailscale", "tailscale.exe")}
+		default: // linux and others
+			candidates = []string{
+				"/usr/bin/tailscale",
+				"/usr/local/bin/tailscale",
+				"/var/lib/tailscale/tailscale", // some packaged installs
+			}
+		}
+		for _, c := range candidates {
+			if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+				binPath = c
+				return
+			}
+		}
+	})
+	return binPath
+}
+
 func run(args ...string) (string, error) {
-	out, err := exec.Command("tailscale", args...).Output()
+	bin := resolveBin()
+	if bin == "" {
+		return "", fmt.Errorf("tailscale CLI not found on PATH or standard install locations " +
+			"(on macOS, symlink it: sudo ln -s /Applications/Tailscale.app/Contents/MacOS/Tailscale /usr/local/bin/tailscale)")
+	}
+	out, err := exec.Command(bin, args...).Output()
 	if err != nil {
 		return "", fmt.Errorf("tailscale %s: %w", strings.Join(args, " "), err)
 	}
