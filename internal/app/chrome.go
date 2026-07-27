@@ -124,11 +124,18 @@ func (c *Chrome) Portability() bundle.Portability {
 
 func (c *Chrome) Exclude() []string {
 	return []string{
+		// caches (regenerable)
 		"Cache/**", "Code Cache/**", "GPUCache/**", "ShaderCache/**",
-		"Service Worker/CacheStorage/**", "Service Worker/ScriptCache/**",
-		"GrShaderCache/**", "GraphiteDawnCache/**", "DawnGraphiteCache/**",
-		"DawnCache/**", "DawnWebGPUCache/**", "component_crx_cache/**",
-		"*.tmp", "*-journal", "*-wal", "*-shm",
+		"Service Worker/**", "GrShaderCache/**", "GraphiteDawnCache/**",
+		"DawnGraphiteCache/**", "DawnCache/**", "DawnWebGPUCache/**",
+		"component_crx_cache/**", "extensions_crx_cache/**",
+		// bulky, non-essential data (often GBs) — not needed for a settings sync
+		"optimization_guide_model_store/**", "optimization_guide_prediction_model_downloads/**",
+		"segmentation_platform/**", "Crashpad/**", "Crash Reports/**",
+		"BrowserMetrics/**", "Safe Browsing/**", "blob_storage/**",
+		"GPUCache", "Application Cache/**", "File System/**",
+		// volatile / lock / temp
+		"Singleton*", "*.tmp", "*-journal", "*-wal", "*-shm",
 	}
 }
 

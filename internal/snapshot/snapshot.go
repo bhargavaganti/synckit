@@ -21,6 +21,9 @@ type Options struct {
 	ID       string          // bundle id
 	Force    bool            // proceed even if an app appears to be running
 	Selected map[string]bool // adapter id -> include; nil means all detected
+	// Ignore adds extra exclude globs per app id ("*" applies to all) on top of
+	// each adapter's built-in excludes — user-configurable trimming.
+	Ignore map[string][]string
 }
 
 // Result summarizes what was captured.
@@ -61,7 +64,8 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 					fmt.Sprintf("%s/%s: app is running (close it or use --force)", ad.ID(), inst.ID))
 				continue
 			}
-			entry, skipped, err := captureInstance(w, ad, inst)
+			extra := append(append([]string{}, opts.Ignore["*"]...), opts.Ignore[ad.ID()]...)
+			entry, skipped, err := captureInstance(w, ad, inst, extra)
 			if err != nil {
 				w.Abort()
 				return nil, fmt.Errorf("capture %s/%s: %w", ad.ID(), inst.ID, err)
@@ -89,9 +93,9 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 
 // captureInstance walks one instance's tree, honoring the adapter's excludes,
 // and streams each file into the bundle under payload/<app>/<inst>/...
-func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance) (bundle.AppEntry, int, error) {
+func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraExcludes []string) (bundle.AppEntry, int, error) {
 	version, _ := ad.Version(inst)
-	excludes := ad.Exclude()
+	excludes := append(append([]string{}, ad.Exclude()...), extraExcludes...)
 	skipped := 0
 
 	entry := bundle.AppEntry{

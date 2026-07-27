@@ -17,6 +17,7 @@ import (
 	"github.com/bhargav/synckit/internal/app"
 	"github.com/bhargav/synckit/internal/bundle"
 	"github.com/bhargav/synckit/internal/restore"
+	"github.com/bhargav/synckit/internal/settings"
 	"github.com/bhargav/synckit/internal/snapshot"
 	ts "github.com/bhargav/synckit/internal/tailscale"
 	"github.com/bhargav/synckit/internal/transport"
@@ -216,6 +217,7 @@ func (s *Service) Snapshot(apps []string, force bool) (*SnapshotResult, error) {
 	dst := filepath.Join(s.SpoolDir, id+".zip")
 	res, err := snapshot.Run(adaptersFor(sel), snapshot.Options{
 		Dst: dst, Now: now, Origin: origin, ID: id, Force: force, Selected: sel,
+		Ignore: settings.Load().Ignore,
 	})
 	if err != nil {
 		if res != nil {

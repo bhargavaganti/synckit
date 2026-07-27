@@ -62,13 +62,15 @@ func (d *DBeaver) Detect() ([]Instance, error) {
 	return out, nil
 }
 
-// Running: DBeaver keeps a .metadata/.lock file in the workspace while open.
+// Running checks whether the .metadata/.lock is actively HELD. DBeaver (Eclipse)
+// leaves the lock file on disk after exit, so testing existence gives false
+// positives — only a held lock means it's really running.
 func (d *DBeaver) Running(inst Instance) (bool, error) {
 	lock := filepath.Join(inst.Root, ".metadata", ".lock")
-	if _, err := os.Stat(lock); err == nil {
-		return true, nil
+	if _, err := os.Stat(lock); err != nil {
+		return false, nil // no lock file → not running
 	}
-	return false, nil
+	return lockHeld(lock), nil
 }
 
 // Version is not reliably recorded in the workspace; leave empty for now.
