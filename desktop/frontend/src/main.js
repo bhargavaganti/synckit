@@ -212,16 +212,30 @@ function handleOutcomes(outcomes, dryRun, name) {
 }
 
 // ---------- Tailnet ----------
+// fetchableFrom returns the bundles worth fetching FROM a peer TO this machine:
+// only those that originated elsewhere (not our own echoed back), newest per
+// source machine.
+function fetchableFrom(peer, me) {
+  const fromOthers = (peer.bundles || []).filter((b) => b.originHost && b.originHost !== me);
+  const newest = {};
+  fromOthers.forEach((b) => {
+    const k = b.originHost;
+    if (!newest[k] || (b.createdAt || '') > (newest[k].createdAt || '')) newest[k] = b;
+  });
+  return { list: Object.values(newest), hidden: (peer.bundles || []).length - Object.values(newest).length };
+}
+
 function renderTailnet(ov) {
   const p = $('panel-tailnet');
   p.innerHTML = '';
-  p.appendChild(h('h2', 'sec', 'Tailnet machines'));
+  p.appendChild(h('h2', 'sec', 'Fetch profiles from other machines'));
   if (!ov.tailscaleUp) {
     p.appendChild(emptyState('🔌', 'Tailscale not detected', 'Set the CLI path in Settings, then Refresh.'));
     return;
   }
   if (!ov.peers || !ov.peers.length) { p.appendChild(emptyState('🌐', 'No peers', 'Is Tailscale up?')); return; }
 
+  const me = ov.machine.hostname;
   ov.peers.forEach((peer) => {
     const card = h('div', 'card');
     const head = h('div', 'row');
@@ -231,16 +245,20 @@ function renderTailnet(ov) {
     let stChip = peer.online ? (peer.serving ? '<span class="chip good">● serving</span>' : '<span class="chip warn">not serving</span>') : '<span class="chip">offline</span>';
     head.appendChild(h('span', 'right', stChip));
     card.appendChild(head);
-    (peer.bundles || []).forEach((b) => {
+
+    const { list, hidden } = fetchableFrom(peer, me);
+    list.forEach((b) => {
       const row = bundleCard(b, [
-        ['Fetch', 'btn', () => doFetch(peer.ip, b.name, false)],
+        ['Fetch only', 'btn', () => doFetch(peer.ip, b.name, false)],
         ['Fetch & import', 'btn primary', () => confirmFetch(peer, b)],
       ]);
       row.style.marginTop = '10px';
       card.appendChild(row);
     });
-    if (peer.online && peer.serving && (!peer.bundles || !peer.bundles.length))
-      card.appendChild(h('div', 'sub', '(no bundles offered)'));
+    if (peer.online && peer.serving && !list.length)
+      card.appendChild(h('div', 'sub', hidden ? '(only your own bundles here — nothing new to fetch)' : '(no bundles offered)'));
+    else if (hidden > 0)
+      card.appendChild(h('div', 'sub', `(${hidden} of your own/older bundle(s) hidden)`));
     p.appendChild(card);
   });
 }
