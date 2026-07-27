@@ -102,7 +102,16 @@ func (a *App) Snapshot(apps []string) (*SnapshotResult, error) {
 }
 
 func (a *App) Restore(bundleName string, apps []string, dryRun, forceClose bool) ([]service.Outcome, error) {
-	return a.svc.RestoreOpts(bundleName, apps, dryRun, false, forceClose)
+	label := "Restoring " + bundleName
+	if dryRun {
+		return a.svc.RestoreOpts(bundleName, apps, dryRun, false, forceClose, nil)
+	}
+	a.emit("transfer", map[string]any{"name": label, "done": 0, "total": -1, "active": true})
+	out, err := a.svc.RestoreOpts(bundleName, apps, dryRun, false, forceClose, func(done, total int64) {
+		a.emit("transfer", map[string]any{"name": label, "done": done, "total": total, "active": true})
+	})
+	a.emit("transfer", map[string]any{"name": label, "done": 1, "total": 1, "active": false})
+	return out, err
 }
 
 func (a *App) Fetch(peerIP, name string, apply, dryRun bool) ([]service.Outcome, error) {

@@ -21,6 +21,8 @@ type Options struct {
 	ForceClose bool          // terminate a running target app before restoring (destructive)
 	DryRun   bool            // report what would happen, change nothing
 	BackupTag string         // suffix for the .bak dir, e.g. a timestamp
+	// OnProgress, if set, is called with (bytesDone, bytesTotal) as files extract.
+	OnProgress func(done, total int64)
 }
 
 // AppOutcome is the per-app result of a restore.
@@ -50,6 +52,14 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 	hostChanged := meta.Origin.OS != runtime.GOOS ||
 		meta.Origin.Hostname != hostname() ||
 		meta.Origin.User != username()
+
+	// total bytes to extract, for progress reporting
+	var total, done int64
+	for _, e := range meta.Apps {
+		if opts.Selected == nil || opts.Selected[e.App] {
+			total += e.Bytes
+		}
+	}
 
 	for _, entry := range meta.Apps {
 		if opts.Selected != nil && !opts.Selected[entry.App] {
@@ -123,7 +133,12 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 			res.Outcomes = append(res.Outcomes, out)
 			continue
 		}
-		if err := bundle.ExtractApp(opts.Src, entry, target); err != nil {
+		if err := bundle.ExtractAppProgress(opts.Src, entry, target, func(delta int64) {
+			done += delta
+			if opts.OnProgress != nil {
+				opts.OnProgress(done, total)
+			}
+		}); err != nil {
 			// Best-effort rollback: drop the partial restore, put the backup back.
 			_ = os.RemoveAll(target)
 			if out.Backup != "" {

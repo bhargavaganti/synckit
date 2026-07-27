@@ -10,6 +10,10 @@ export function AppIDs() {
   return window['go']['main']['App']['AppIDs']();
 }
 
+export function DeleteBundle(arg1) {
+  return window['go']['main']['App']['DeleteBundle'](arg1);
+}
+
 export function Diagnose() {
   return window['go']['main']['App']['Diagnose']();
 }

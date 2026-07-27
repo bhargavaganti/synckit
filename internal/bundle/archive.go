@@ -239,6 +239,12 @@ func ReadMetadata(src string) (Metadata, error) {
 // checksum against the metadata as it goes. dstRoot receives the files that
 // lived under entry.Path inside the bundle, so dstRoot is the profile root.
 func ExtractApp(src string, entry AppEntry, dstRoot string) error {
+	return ExtractAppProgress(src, entry, dstRoot, nil)
+}
+
+// ExtractAppProgress is ExtractApp with a callback invoked with the number of
+// bytes written as extraction proceeds (delta per call), for progress bars.
+func ExtractAppProgress(src string, entry AppEntry, dstRoot string, onBytes func(delta int64)) error {
 	zr, cleanup, err := openZip(src)
 	if err != nil {
 		return err
@@ -257,7 +263,7 @@ func ExtractApp(src string, entry AppEntry, dstRoot string) error {
 		if !ok {
 			return fmt.Errorf("bundle: %s missing from metadata checksums", rel)
 		}
-		if err := extractOne(zf, filepath.Join(dstRoot, filepath.FromSlash(rel)), want); err != nil {
+		if err := extractOne(zf, filepath.Join(dstRoot, filepath.FromSlash(rel)), want, onBytes); err != nil {
 			return err
 		}
 		seen++
@@ -268,7 +274,12 @@ func ExtractApp(src string, entry AppEntry, dstRoot string) error {
 	return nil
 }
 
-func extractOne(zf *zip.File, dst, wantSum string) error {
+// countWriter reports bytes written (delta) to a callback.
+type countWriter struct{ cb func(int64) }
+
+func (c countWriter) Write(b []byte) (int, error) { c.cb(int64(len(b))); return len(b), nil }
+
+func extractOne(zf *zip.File, dst, wantSum string, onBytes func(delta int64)) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
@@ -283,7 +294,11 @@ func extractOne(zf *zip.File, dst, wantSum string) error {
 		return err
 	}
 	h := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(out, h), rc); err != nil {
+	var w io.Writer = io.MultiWriter(out, h)
+	if onBytes != nil {
+		w = io.MultiWriter(out, h, countWriter{onBytes})
+	}
+	if _, err := io.Copy(w, rc); err != nil {
 		out.Close()
 		return err
 	}

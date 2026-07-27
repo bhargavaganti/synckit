@@ -251,19 +251,28 @@ async function doRestore(name, apps, dryRun, forceClose) {
 }
 
 function handleOutcomes(outcomes, dryRun, name) {
+  if (!outcomes || !outcomes.length) {
+    modal({ title: 'Nothing to restore', body: 'This bundle has no apps that are installed on this machine, so there is nothing to put back. Install the app here first, then restore.', confirmText: 'OK', onConfirm() {} });
+    $('mCancel').style.display = 'none';
+    return;
+  }
   const running = outcomes.filter((o) => o.skipped && o.skipped.includes('running'));
   if (running.length && !dryRun) {
     modal({
       title: 'Some apps are running',
-      body: running.map((o) => o.app).join(', ') + ' are open. Force-close them and restore?',
+      body: running.map((o) => o.app).join(', ') + ' are open. Force-close them and restore?\n(unsaved work in those apps will be lost)',
       confirmText: 'Force-close & restore', danger: true,
       onConfirm: () => doRestore(name, [], false, true),
     });
     return;
   }
-  const ok = outcomes.filter((o) => o.restored).length;
-  const skip = outcomes.filter((o) => o.skipped).length;
-  toast(`${dryRun ? 'Dry-run: ' : ''}${ok} restored, ${skip} skipped`, dryRun ? '' : 'ok');
+  const skipped = outcomes.filter((o) => o.skipped);
+  const applied = outcomes.filter((o) => !o.skipped); // dry-run: "would restore"; real: restored
+  const verb = dryRun ? 'Would restore' : 'Restored';
+  let msg = `${verb} ${applied.length}` + (skipped.length ? `, skipped ${skipped.length}` : '');
+  if (applied.length) msg += '\n✓ ' + applied.map((o) => o.app + '/' + o.instance).join(', ');
+  if (skipped.length) msg += '\n⚠ ' + skipped.map((o) => o.app + ': ' + o.skipped).join('\n⚠ ');
+  toast(msg, dryRun ? '' : 'ok');
   refresh();
 }
 

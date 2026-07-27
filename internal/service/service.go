@@ -253,12 +253,12 @@ func (s *Service) Restore(bundleName string, apps []string, dryRun, force bool) 
 }
 
 // RestoreOpts is Restore with the force-close option (terminate a running
-// target app before restoring).
-func (s *Service) RestoreOpts(bundleName string, apps []string, dryRun, force, forceClose bool) ([]restore.AppOutcome, error) {
+// target app before restoring) and an optional extract-progress callback.
+func (s *Service) RestoreOpts(bundleName string, apps []string, dryRun, force, forceClose bool, onProgress func(done, total int64)) ([]restore.AppOutcome, error) {
 	src := filepath.Join(s.SpoolDir, filepath.Base(bundleName))
 	res, err := restore.Run(app.Registry(), restore.Options{
 		Src: src, Selected: selection(apps), DryRun: dryRun, Force: force, ForceClose: forceClose,
-		BackupTag: time.Now().Format("20060102-150405"),
+		BackupTag: time.Now().Format("20060102-150405"), OnProgress: onProgress,
 	})
 	if err != nil {
 		return nil, err
@@ -281,7 +281,7 @@ func (s *Service) FetchProgress(peerIP, name string, apply, dryRun bool, onProgr
 	if !apply {
 		return nil, nil
 	}
-	return s.RestoreOpts(name, nil, dryRun, false, false)
+	return s.RestoreOpts(name, nil, dryRun, false, false, nil)
 }
 
 // PruneOwnSnapshots keeps the newest `keep` snapshots that originated on THIS

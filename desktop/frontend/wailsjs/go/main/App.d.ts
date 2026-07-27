@@ -9,6 +9,8 @@ export function AddIgnore(arg1:string,arg2:string):Promise<void>;
 
 export function AppIDs():Promise<Array<string>>;
 
+export function DeleteBundle(arg1:string):Promise<void>;
+
 export function Diagnose():Promise<string>;
 
 export function Fetch(arg1:string,arg2:string,arg3:boolean,arg4:boolean):Promise<Array<restore.AppOutcome>>;
