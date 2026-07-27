@@ -34,32 +34,22 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc pkg-config \
+            libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libxxf86vm-dev libwayland-dev
 
-      - name: Install fyne packaging tool
-        run: go install fyne.io/fyne/v2/cmd/fyne@latest
-
-      - name: Build CLI
+      # Ship raw go-build binaries (the exact commands CI validates on every OS).
+      # `fyne package` is skipped for v0.x — it SIGABRTs on macOS runners and is
+      # flaky on Linux; native .app/.dmg bundling is a later polish step.
+      - name: Build CLI + GUI binaries
         shell: bash
         run: |
           mkdir -p dist
-          EXT=""; [ "${{ matrix.goos }}" = "windows" ] && EXT=".exe"
-          go build -o "dist/synckit-${{ matrix.goos }}-${{ matrix.arch }}$EXT" ./cmd/synckit
-
-      - name: Package GUI (native)
-        shell: bash
-        working-directory: cmd/synckit-gui
-        run: |
-          # No --release: that flag code-signs (and on macOS aborts without a
-          # signing identity). Unsigned bundles are what we ship for v0.x.
-          fyne package
-          # Collect whatever fyne produced into ../../dist with a stable name.
-          mkdir -p ../../dist
-          case "${{ matrix.goos }}" in
-            windows) mv synckit.exe "../../dist/synckit-gui-windows-${{ matrix.arch }}.exe" ;;
-            darwin)  zip -ryq "../../dist/synckit-gui-darwin-${{ matrix.arch }}.zip" synckit.app ;;
-            linux)   mv synckit.tar.xz "../../dist/synckit-gui-linux-${{ matrix.arch }}.tar.xz" ;;
-          esac
+          EXT=""; LDF=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; LDF="-H windowsgui"; fi
+          BASE="${{ matrix.goos }}-${{ matrix.arch }}"
+          go build -o "dist/synckit-$BASE$EXT" ./cmd/synckit
+          go build -ldflags "$LDF" -o "dist/synckit-gui-$BASE$EXT" ./cmd/synckit-gui
 
       - uses: actions/upload-artifact@v4
         with:
