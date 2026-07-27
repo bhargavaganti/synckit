@@ -18,9 +18,11 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest,  goos: linux,   arch: amd64 }
-          - { os: macos-latest,   goos: darwin,  arch: arm64 }
-          - { os: macos-13,       goos: darwin,  arch: amd64 }
+          - { os: macos-latest,   goos: darwin,  arch: arm64 }   # Apple Silicon
           - { os: windows-latest, goos: windows, arch: amd64 }
+          # Intel macOS (macos-13/amd64) omitted: those runners queue
+          # indefinitely and block the release. Intel Mac users can build from
+          # source or run the CLI. Re-add once a runner is reliably available.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
