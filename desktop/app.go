@@ -88,7 +88,11 @@ type SnapshotResult struct {
 }
 
 func (a *App) Snapshot(apps []string) (*SnapshotResult, error) {
-	res, err := a.svc.Snapshot(apps, false)
+	a.emit("transfer", map[string]any{"name": "Creating snapshot", "done": 0, "total": -1, "active": true})
+	res, err := a.svc.SnapshotProgress(apps, false, func(done int64) {
+		a.emit("transfer", map[string]any{"name": "Creating snapshot", "done": done, "total": -1, "active": true})
+	})
+	a.emit("transfer", map[string]any{"name": "Creating snapshot", "done": 1, "total": 1, "active": false})
 	if err != nil {
 		if res != nil && len(res.Skipped) > 0 {
 			return nil, fmt.Errorf("%v; skipped: %v", err, res.Skipped)

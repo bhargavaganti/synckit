@@ -27,6 +27,9 @@ type Options struct {
 	// Include, when set for an app id, restricts that app's snapshot to ONLY
 	// files matching these globs (still honoring excludes). Empty = include all.
 	Include map[string][]string
+	// OnProgress, if set, is called with cumulative bytes written as files are
+	// captured, for a snapshot progress bar.
+	OnProgress func(done int64)
 }
 
 // Result summarizes what was captured.
@@ -50,6 +53,13 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 
 	res := &Result{Bundle: opts.Dst}
 	var entries []bundle.AppEntry
+	var done int64
+	onBytes := func(n int64) {
+		done += n
+		if opts.OnProgress != nil {
+			opts.OnProgress(done)
+		}
+	}
 
 	for _, ad := range adapters {
 		if opts.Selected != nil && !opts.Selected[ad.ID()] {
@@ -68,7 +78,7 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 				continue
 			}
 			extra := append(append([]string{}, opts.Ignore["*"]...), opts.Ignore[ad.ID()]...)
-			entry, skipped, err := captureInstance(w, ad, inst, extra, opts.Include[ad.ID()])
+			entry, skipped, err := captureInstance(w, ad, inst, extra, opts.Include[ad.ID()], onBytes)
 			if err != nil {
 				w.Abort()
 				return nil, fmt.Errorf("capture %s/%s: %w", ad.ID(), inst.ID, err)
@@ -96,7 +106,7 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 
 // captureInstance walks one instance's tree, honoring the adapter's excludes,
 // and streams each file into the bundle under payload/<app>/<inst>/...
-func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraExcludes, includeOnly []string) (bundle.AppEntry, int, error) {
+func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraExcludes, includeOnly []string, onBytes func(int64)) (bundle.AppEntry, int, error) {
 	version, _ := ad.Version(inst)
 	excludes := append(append([]string{}, ad.Exclude()...), extraExcludes...)
 	skipped := 0
@@ -144,6 +154,9 @@ func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraE
 		entry.Checksums[relSlash] = sum
 		entry.Bytes += size
 		entry.Files++
+		if onBytes != nil {
+			onBytes(size)
+		}
 		return nil
 	})
 	if err != nil {

@@ -222,6 +222,11 @@ type SnapshotResult struct {
 
 // Snapshot captures the selected apps (nil = all) into a new bundle.
 func (s *Service) Snapshot(apps []string, force bool) (*SnapshotResult, error) {
+	return s.SnapshotProgress(apps, force, nil)
+}
+
+// SnapshotProgress is Snapshot with a byte-progress callback.
+func (s *Service) SnapshotProgress(apps []string, force bool, onProgress func(done int64)) (*SnapshotResult, error) {
 	sel := selection(apps)
 	origin, now := s.originNow()
 	id := BundleID(origin, now)
@@ -229,7 +234,7 @@ func (s *Service) Snapshot(apps []string, force bool) (*SnapshotResult, error) {
 	st := settings.Load()
 	res, err := snapshot.Run(adaptersFor(sel), snapshot.Options{
 		Dst: dst, Now: now, Origin: origin, ID: id, Force: force, Selected: sel,
-		Ignore: st.Ignore, Include: st.IncludeOnly,
+		Ignore: st.Ignore, Include: st.IncludeOnly, OnProgress: onProgress,
 	})
 	if err != nil {
 		if res != nil {
