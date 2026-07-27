@@ -156,7 +156,9 @@ jobs:
               cp desktop/build/bin/synckit-desktop "dist/synckit-desktop-linux-${{ matrix.arch }}"
               chmod +x "dist/synckit-desktop-linux-${{ matrix.arch }}" ;;
             darwin)
-              mkdir -p dmg && cp -R desktop/build/bin/synckit-desktop.app dmg/
+              APP=$(ls -d desktop/build/bin/*.app | head -1)
+              echo "packaging app bundle: $APP"
+              mkdir -p dmg && cp -R "$APP" dmg/
               ln -s /Applications dmg/Applications
               hdiutil create -volname "synckit" -srcfolder dmg -ov -format UDZO \
                 "dist/synckit-desktop-macos-${{ matrix.arch }}.dmg" ;;
