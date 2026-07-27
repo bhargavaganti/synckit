@@ -17,11 +17,13 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/bhargav/synckit/internal/bundle"
 	"github.com/bhargav/synckit/internal/daemon"
 	"github.com/bhargav/synckit/internal/service"
 	"github.com/bhargav/synckit/internal/syncengine"
 	ts "github.com/bhargav/synckit/internal/tailscale"
 	"github.com/bhargav/synckit/internal/transport"
+	"github.com/bhargav/synckit/internal/vault"
 )
 
 type gui struct {
@@ -45,6 +47,11 @@ func main() {
 	if err := os.MkdirAll(spool, 0o755); err != nil {
 		log.Fatal(err)
 	}
+	// Enable encryption at rest/in transit if a shared key is configured.
+	if v, err := vault.Load(vault.DefaultPath()); err == nil {
+		bundle.UseVault(v)
+	}
+
 	svc := service.New(spool, transport.DefaultPort)
 
 	a := fyneapp.NewWithID("dev.bhargav.synckit")

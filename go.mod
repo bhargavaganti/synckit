@@ -1,13 +1,15 @@
 module github.com/bhargav/synckit
 
-go 1.22.0
+go 1.24.0
 
 require (
+	filippo.io/age v1.3.1
 	fyne.io/fyne/v2 v2.8.0
 	github.com/spf13/cobra v1.8.1
 )
 
 require (
+	filippo.io/hpke v0.4.0 // indirect
 	fyne.io/systray v1.12.2 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/FyshOS/fancyfs v0.0.1 // indirect
@@ -40,9 +42,10 @@ require (
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
+	golang.org/x/crypto v0.45.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

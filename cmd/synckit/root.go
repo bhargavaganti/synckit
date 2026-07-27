@@ -12,6 +12,7 @@ import (
 
 	"github.com/bhargav/synckit/internal/app"
 	"github.com/bhargav/synckit/internal/bundle"
+	"github.com/bhargav/synckit/internal/vault"
 )
 
 func newRootCmd() *cobra.Command {
@@ -20,6 +21,13 @@ func newRootCmd() *cobra.Command {
 		Short:         "Sync Chrome, Firefox and DBeaver profiles across machines",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Load the shared encryption key once (if present) so every bundle
+		// operation in any subcommand is encrypted/decrypted transparently.
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if v, err := vault.Load(vault.DefaultPath()); err == nil {
+				bundle.UseVault(v)
+			}
+		},
 	}
 	root.AddCommand(
 		newDetectCmd(),
@@ -32,6 +40,7 @@ func newRootCmd() *cobra.Command {
 		newServeCmd(),
 		newAppsCmd(),
 		newMatrixCmd(),
+		newKeyCmd(),
 	)
 	return root
 }

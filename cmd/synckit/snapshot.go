@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bhargav/synckit/internal/bundle"
 	"github.com/bhargav/synckit/internal/snapshot"
 )
 
@@ -17,6 +18,9 @@ func newSnapshotCmd() *cobra.Command {
 		Use:   "snapshot",
 		Short: "Capture app profiles into a portable bundle (.zip)",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !bundle.Encrypted() {
+				fmt.Fprintln(cmd.ErrOrStderr(), "⚠ bundles are UNENCRYPTED — run `synckit key init` to encrypt secrets at rest.")
+			}
 			sel := selectionFromApps(appsFlag)
 			origin, now := originNow()
 			id := bundleID(origin, now)

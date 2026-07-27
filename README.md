@@ -33,6 +33,24 @@ Chrome (use Chrome's own sign-in sync for those).
 - **Checksum verified.** Every file's SHA-256 is recorded at snapshot and
   re-verified on restore.
 
+## Encryption
+
+Bundles can be **encrypted at rest and in transit** with
+[age](https://age-encryption.org). One shared key lives on every machine at
+`~/.synckit/identity.key`; bundles are encrypted to it, so any machine holding
+the key can decrypt any machine's bundles — and anyone without it gets nothing.
+
+```bash
+synckit key init                     # generate the key on the first machine
+synckit key export > synckit.key     # move this file to your other machines
+synckit key import synckit.key       # install it there (then it's shared)
+synckit key status                   # is encryption on? what's the recipient?
+```
+
+Metadata (app names, versions, checksums) decrypts transparently for listing, so
+`peers` / `matrix` / bundle listings keep working. Without a key, synckit falls
+back to plaintext bundles and warns on every snapshot.
+
 ## Architecture
 
 ```

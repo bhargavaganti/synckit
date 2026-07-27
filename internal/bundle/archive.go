@@ -20,11 +20,33 @@ const metadataName = "metadata.json"
 // payloadPrefix is the bundle-internal directory holding app payloads.
 const payloadPrefix = "payload"
 
+// Vaulter encrypts and decrypts bundle streams. It is satisfied by
+// *vault.Vault; kept as an interface so this package stays crypto-agnostic.
+type Vaulter interface {
+	EncryptWriter(dst io.Writer) (io.WriteCloser, error)
+	DecryptReader(src io.Reader) (io.Reader, error)
+}
+
+// activeVault, when set via UseVault, transparently encrypts bundles on Create
+// and decrypts them on read. Nil => plaintext bundles (backward compatible).
+var activeVault Vaulter
+
+// UseVault enables encryption at rest/in transit for all subsequent bundle I/O.
+func UseVault(v Vaulter) { activeVault = v }
+
+// Encrypted reports whether bundle encryption is currently enabled.
+func Encrypted() bool { return activeVault != nil }
+
+// ageMagic is the header of an age-encrypted stream.
+const ageMagic = "age-encryption.org/v1"
+
 // Writer builds a bundle .zip incrementally: add payload files per app, then
 // Finish to flush metadata.json. It computes SHA-256 for each file as it writes.
+// When a vault is active, the whole zip stream is age-encrypted to the file.
 type Writer struct {
 	zw   *zip.Writer
 	f    *os.File
+	enc  io.WriteCloser // non-nil when encrypting; wraps f
 	meta Metadata
 }
 
@@ -39,7 +61,18 @@ func Create(dst string, meta Metadata) (*Writer, error) {
 		return nil, err
 	}
 	meta.Format = FormatVersion
-	return &Writer{zw: zip.NewWriter(f), f: f, meta: meta}, nil
+
+	var sink io.Writer = f
+	var enc io.WriteCloser
+	if activeVault != nil {
+		enc, err = activeVault.EncryptWriter(f)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+		sink = enc
+	}
+	return &Writer{zw: zip.NewWriter(sink), f: f, enc: enc, meta: meta}, nil
 }
 
 // AddFile copies src into the bundle at payload/<appRel> and records its
@@ -82,24 +115,90 @@ func (w *Writer) Finish() error {
 	if err := w.zw.Close(); err != nil {
 		return err
 	}
+	if w.enc != nil {
+		if err := w.enc.Close(); err != nil { // flush the age stream
+			return err
+		}
+	}
 	return w.f.Close()
 }
 
 // Abort closes and removes a partially written bundle.
 func (w *Writer) Abort() {
 	_ = w.zw.Close()
+	if w.enc != nil {
+		_ = w.enc.Close()
+	}
 	name := w.f.Name()
 	_ = w.f.Close()
 	_ = os.Remove(name)
 }
 
+// openZip opens a bundle for reading, decrypting to a temp file first when the
+// bundle is encrypted. The returned cleanup MUST be called by the caller.
+func openZip(path string) (*zip.Reader, func(), error) {
+	if isEncryptedFile(path) {
+		if activeVault == nil {
+			return nil, nil, errors.New("bundle is encrypted but no synckit key is configured (run `synckit key init` / import the key)")
+		}
+		in, err := os.Open(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		defer in.Close()
+		r, err := activeVault.DecryptReader(in)
+		if err != nil {
+			return nil, nil, fmt.Errorf("decrypt bundle: %w", err)
+		}
+		tmp, err := os.CreateTemp("", "synckit-dec-*.zip")
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, err := io.Copy(tmp, r); err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return nil, nil, err
+		}
+		fi, err := tmp.Stat()
+		if err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return nil, nil, err
+		}
+		zr, err := zip.NewReader(tmp, fi.Size())
+		if err != nil {
+			tmp.Close()
+			os.Remove(tmp.Name())
+			return nil, nil, err
+		}
+		return zr, func() { tmp.Close(); os.Remove(tmp.Name()) }, nil
+	}
+	zrc, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &zrc.Reader, func() { zrc.Close() }, nil
+}
+
+// isEncryptedFile reports whether path begins with the age magic header.
+func isEncryptedFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	buf := make([]byte, len(ageMagic))
+	n, _ := io.ReadFull(f, buf)
+	return string(buf[:n]) == ageMagic
+}
+
 // ReadMetadata opens a bundle and returns just its metadata, without extracting.
 func ReadMetadata(src string) (Metadata, error) {
-	zr, err := zip.OpenReader(src)
+	zr, cleanup, err := openZip(src)
 	if err != nil {
 		return Metadata{}, err
 	}
-	defer zr.Close()
+	defer cleanup()
 	for _, zf := range zr.File {
 		if zf.Name == metadataName {
 			rc, err := zf.Open()
@@ -121,11 +220,11 @@ func ReadMetadata(src string) (Metadata, error) {
 // checksum against the metadata as it goes. dstRoot receives the files that
 // lived under entry.Path inside the bundle, so dstRoot is the profile root.
 func ExtractApp(src string, entry AppEntry, dstRoot string) error {
-	zr, err := zip.OpenReader(src)
+	zr, cleanup, err := openZip(src)
 	if err != nil {
 		return err
 	}
-	defer zr.Close()
+	defer cleanup()
 
 	// Bundle-internal prefix for this app's files, e.g. "payload/chrome/Default/".
 	prefix := path.Join(payloadPrefix, entry.Path) + "/"
