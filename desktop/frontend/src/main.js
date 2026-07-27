@@ -389,7 +389,9 @@ function renderMatrix(m) {
   m.machines.forEach((mc) => (html += '<th>' + esc(mc) + (mc === me ? ' (you)' : '') + '</th>'));
   html += '<th>Secrets</th><th>Status</th></tr></thead><tbody>';
   m.rows.forEach((r) => {
-    html += '<tr><td>' + esc(r.app + ' / ' + r.role) + '</td>';
+    const browserNote = (r.app === 'chrome' || r.app === 'firefox')
+      ? '<div class="sub" style="color:var(--warn)">browser — cross-machine limited, use its Sync</div>' : '';
+    html += '<tr><td>' + esc(r.app + ' / ' + r.role) + browserNote + '</td>';
     m.machines.forEach((mc) => {
       const c = r.cells[mc];
       if (!c || !c.present) { html += '<td class="mono muted">—</td>'; return; }
@@ -472,6 +474,24 @@ async function renderSettings(ov) {
     encCard.appendChild(h('div', 'right')).appendChild(kb);
   } else encCard.appendChild(h('span', 'chip good', 'encrypted'));
   p.appendChild(encCard);
+
+  // Browsers card — the cross-machine reality + Chrome safe mode.
+  const brCard = h('div', 'card');
+  brCard.appendChild(h('div', 'title', 'Browsers (Chrome / Firefox)'));
+  brCard.appendChild(h('div', 'sub',
+    'Chrome resists cross-machine profile copying — its settings are HMAC-signed and passwords are OS-encrypted, ' +
+    'so a full copy won\'t stick on another machine. Use Chrome\'s own account Sync for that; synckit is best for ' +
+    'same-machine backup. Firefox copies more fully.'));
+  const safe = await App.ChromeSafeMode();
+  const lb = h('label', 'ck');
+  lb.style.marginTop = '10px';
+  lb.innerHTML = '<input type="checkbox" ' + (safe ? 'checked' : '') + '> Chrome: snapshot <b>bookmarks only</b> (the part that transfers cross-machine)';
+  lb.querySelector('input').onchange = async (e) => {
+    try { await App.SetChromeSafeMode(e.target.checked); toast('Chrome safe mode ' + (e.target.checked ? 'ON — snapshots carry bookmarks only' : 'OFF — full profile'), 'ok'); }
+    catch (err) { errorModal('Failed', err); }
+  };
+  brCard.appendChild(lb);
+  p.appendChild(brCard);
 
   // Ignore rules
   const igCard = h('div', 'card');

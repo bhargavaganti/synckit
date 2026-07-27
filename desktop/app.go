@@ -200,6 +200,28 @@ func (a *App) KeyInit() (string, error) {
 	return rec, nil
 }
 
+// chromeSafePreset is the whitelist for Chrome "bookmarks-only" safe mode — the
+// files that actually survive a cross-machine copy (bookmarks; NOT the HMAC-
+// signed Preferences or OS-encrypted Login Data).
+var chromeSafePreset = []string{"Bookmarks", "Bookmarks.bak"}
+
+func (a *App) ChromeSafeMode() bool {
+	return len(settings.Load().IncludeOnly["chrome"]) > 0
+}
+
+func (a *App) SetChromeSafeMode(on bool) error {
+	st := settings.Load()
+	if st.IncludeOnly == nil {
+		st.IncludeOnly = map[string][]string{}
+	}
+	if on {
+		st.IncludeOnly["chrome"] = chromeSafePreset
+	} else {
+		delete(st.IncludeOnly, "chrome")
+	}
+	return settings.Save(st)
+}
+
 // AppIDs returns the built-in app ids, for the ignore editor.
 func (a *App) AppIDs() []string {
 	var ids []string

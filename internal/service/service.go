@@ -226,9 +226,10 @@ func (s *Service) Snapshot(apps []string, force bool) (*SnapshotResult, error) {
 	origin, now := s.originNow()
 	id := BundleID(origin, now)
 	dst := filepath.Join(s.SpoolDir, id+".zip")
+	st := settings.Load()
 	res, err := snapshot.Run(adaptersFor(sel), snapshot.Options{
 		Dst: dst, Now: now, Origin: origin, ID: id, Force: force, Selected: sel,
-		Ignore: settings.Load().Ignore,
+		Ignore: st.Ignore, Include: st.IncludeOnly,
 	})
 	if err != nil {
 		if res != nil {

@@ -24,6 +24,9 @@ type Options struct {
 	// Ignore adds extra exclude globs per app id ("*" applies to all) on top of
 	// each adapter's built-in excludes — user-configurable trimming.
 	Ignore map[string][]string
+	// Include, when set for an app id, restricts that app's snapshot to ONLY
+	// files matching these globs (still honoring excludes). Empty = include all.
+	Include map[string][]string
 }
 
 // Result summarizes what was captured.
@@ -65,7 +68,7 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 				continue
 			}
 			extra := append(append([]string{}, opts.Ignore["*"]...), opts.Ignore[ad.ID()]...)
-			entry, skipped, err := captureInstance(w, ad, inst, extra)
+			entry, skipped, err := captureInstance(w, ad, inst, extra, opts.Include[ad.ID()])
 			if err != nil {
 				w.Abort()
 				return nil, fmt.Errorf("capture %s/%s: %w", ad.ID(), inst.ID, err)
@@ -93,7 +96,7 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 
 // captureInstance walks one instance's tree, honoring the adapter's excludes,
 // and streams each file into the bundle under payload/<app>/<inst>/...
-func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraExcludes []string) (bundle.AppEntry, int, error) {
+func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraExcludes, includeOnly []string) (bundle.AppEntry, int, error) {
 	version, _ := ad.Version(inst)
 	excludes := append(append([]string{}, ad.Exclude()...), extraExcludes...)
 	skipped := 0
@@ -120,6 +123,9 @@ func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraE
 			return err
 		}
 		relSlash := filepath.ToSlash(rel)
+		if len(includeOnly) > 0 && !matchesAny(relSlash, includeOnly) {
+			return nil // safe mode: only the whitelisted files
+		}
 		if matchesAny(relSlash, excludes) {
 			return nil
 		}

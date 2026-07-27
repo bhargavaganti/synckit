@@ -18,6 +18,12 @@ type Settings struct {
 	// bulky, non-essential data (caches, site storage, ML models) so bundles
 	// stay small. Patterns are payload-relative; "dir/**" excludes a whole tree.
 	Ignore map[string][]string `json:"ignore,omitempty"`
+
+	// IncludeOnly, when set for an app, restricts its snapshot to ONLY these
+	// payload-relative globs (still honoring excludes). Used for browser "safe
+	// mode" — e.g. Chrome bookmarks only — since a full Chrome profile can't be
+	// copied across machines (HMAC-signed prefs, OS-encrypted secrets).
+	IncludeOnly map[string][]string `json:"includeOnly,omitempty"`
 }
 
 // IgnoreFor returns the merged extra ignore globs for an app (its own + "*").
