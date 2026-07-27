@@ -137,7 +137,13 @@ jobs:
           VLD="-X github.com/bhargav/synckit/internal/version.Version=${GITHUB_REF_NAME}"
           TAGS=""
           [ "${{ matrix.goos }}" = "linux" ] && TAGS="-tags webkit2_41"
-          wails build $TAGS -ldflags "$VLD"
+          if ! wails build -platform ${{ matrix.goos }}/${{ matrix.arch }} $TAGS -ldflags "$VLD" > wails.log 2>&1; then
+            echo "===== wails.log ====="; cat wails.log
+            MSG=$(tail -n 40 wails.log | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error::$MSG"
+            exit 1
+          fi
+          cat wails.log
 
       - name: Package desktop artifact
         shell: bash
