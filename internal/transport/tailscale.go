@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,7 +34,17 @@ func NewTailscale(peer string, port int) *Tailscale {
 	return &Tailscale{
 		Peer: peer,
 		Port: port,
-		HTTP: &http.Client{Timeout: 5 * time.Minute},
+		// No overall request timeout — a multi-GB bundle can legitimately take
+		// many minutes to stream. Bound the connection setup and header wait
+		// instead, so a dead peer still fails fast but a slow-but-alive transfer
+		// is allowed to finish.
+		HTTP: &http.Client{
+			Transport: &http.Transport{
+				DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
+				ResponseHeaderTimeout: 60 * time.Second,
+				IdleConnTimeout:       90 * time.Second,
+			},
+		},
 	}
 }
 
