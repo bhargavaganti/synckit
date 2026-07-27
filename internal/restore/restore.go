@@ -18,6 +18,7 @@ type Options struct {
 	Src      string          // bundle path
 	Selected map[string]bool // adapter id -> include; nil means all in bundle
 	Force    bool            // proceed even if the target app is running
+	ForceClose bool          // terminate a running target app before restoring (destructive)
 	DryRun   bool            // report what would happen, change nothing
 	BackupTag string         // suffix for the .bak dir, e.g. a timestamp
 }
@@ -77,12 +78,23 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 		}
 		out.Target = target
 
-		// Preflight: refuse to overwrite a profile whose app is running.
+		// Preflight: refuse to overwrite a profile whose app is running. If
+		// ForceClose is set, terminate the app first (destructive; UI confirms).
 		if inst, ok := currentInstance(ad, entry.Instance); ok {
-			if running, _ := ad.Running(inst); running && !opts.Force {
-				out.Skipped = "target app is running (close it or use --force)"
-				res.Outcomes = append(res.Outcomes, out)
-				continue
+			if running, _ := ad.Running(inst); running {
+				if opts.ForceClose {
+					if err := app.CloseApp(entry.App); err != nil {
+						out.Warnings = append(out.Warnings, "force-close: "+err.Error())
+					} else {
+						out.Warnings = append(out.Warnings, "force-closed "+entry.App+" before restore")
+					}
+					running, _ = ad.Running(inst)
+				}
+				if running && !opts.Force {
+					out.Skipped = "target app is running (close it, use force-close, or --force)"
+					res.Outcomes = append(res.Outcomes, out)
+					continue
+				}
 			}
 		}
 
