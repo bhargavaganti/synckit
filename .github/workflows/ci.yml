@@ -40,14 +40,16 @@ jobs:
       - name: Build & test
         shell: bash
         run: |
-          run() { echo "== $* =="; "$@"; }
-          if ! {
+          # Subshell with set -e => fail-fast; capture everything; on failure
+          # print the log and emit its tail as a page-visible ::error:: annotation.
+          if ! (
+            set -e
             go env GOOS GOARCH CGO_ENABLED CC
-            run go build ./cmd/synckit
-            run go vet ./internal/...
-            run go test ./internal/... -v
-            run go build ./cmd/synckit-gui
-          } > build.log 2>&1; then
+            echo "== build cli ==";  go build ./cmd/synckit
+            echo "== vet ==";        go vet ./internal/...
+            echo "== test ==";       go test ./internal/... -v
+            echo "== build gui ==";  go build ./cmd/synckit-gui
+          ) > build.log 2>&1; then
             echo "===== build.log ====="; cat build.log
             MSG=$(tail -n 40 build.log | sed ':a;N;$!ba;s/\n/%0A/g')
             echo "::error::$MSG"
