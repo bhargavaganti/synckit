@@ -40,9 +40,9 @@ jobs:
             libgl1-mesa-dev xorg-dev libxkbcommon-dev \
             libxxf86vm-dev libwayland-dev
 
-      # Ship raw go-build binaries (the exact commands CI validates on every OS).
-      # `fyne package` is skipped for v0.x — it SIGABRTs on macOS runners and is
-      # flaky on Linux; native .app/.dmg bundling is a later polish step.
+      # Raw go-build binaries (the exact commands CI validates on every OS). We
+      # hand-assemble the macOS .app/.dmg below instead of using `fyne package`,
+      # which SIGABRTs on macOS runners.
       - name: Build CLI + GUI binaries
         shell: bash
         run: |
@@ -52,6 +52,50 @@ jobs:
           BASE="${{ matrix.goos }}-${{ matrix.arch }}"
           go build -o "dist/synckit-$BASE$EXT" ./cmd/synckit
           go build -ldflags "$LDF" -o "dist/synckit-gui-$BASE$EXT" ./cmd/synckit-gui
+
+      # Hand-build synckit.app (Info.plist + .icns) and wrap it in a
+      # drag-to-Applications .dmg. Unsigned: first launch needs right-click→Open.
+      - name: Package macOS .app + .dmg
+        if: matrix.goos == 'darwin'
+        shell: bash
+        run: |
+          set -e
+          VER="${GITHUB_REF_NAME#v}"
+          APP="build/synckit.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp "dist/synckit-gui-darwin-${{ matrix.arch }}" "$APP/Contents/MacOS/synckit"
+          chmod +x "$APP/Contents/MacOS/synckit"
+
+          # icon.png -> icon.icns via the required iconset sizes
+          mkdir icon.iconset
+          for sz in 16 32 128 256 512; do
+            sips -z $sz $sz cmd/synckit-gui/icon.png --out "icon.iconset/icon_${sz}x${sz}.png" >/dev/null
+            d=$((sz*2)); sips -z $d $d cmd/synckit-gui/icon.png --out "icon.iconset/icon_${sz}x${sz}@2x.png" >/dev/null
+          done
+          iconutil -c icns icon.iconset -o "$APP/Contents/Resources/icon.icns"
+
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict>' \
+            '<key>CFBundleName</key><string>synckit</string>' \
+            '<key>CFBundleDisplayName</key><string>synckit</string>' \
+            '<key>CFBundleIdentifier</key><string>dev.bhargav.synckit</string>' \
+            '<key>CFBundleExecutable</key><string>synckit</string>' \
+            '<key>CFBundleIconFile</key><string>icon.icns</string>' \
+            '<key>CFBundlePackageType</key><string>APPL</string>' \
+            "<key>CFBundleVersion</key><string>${VER}</string>" \
+            "<key>CFBundleShortVersionString</key><string>${VER}</string>" \
+            '<key>LSMinimumSystemVersion</key><string>11.0</string>' \
+            '<key>NSHighResolutionCapable</key><true/>' \
+            '</dict></plist>' > "$APP/Contents/Info.plist"
+
+          mkdir -p build/dmg
+          cp -R "$APP" build/dmg/
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname "synckit" -srcfolder build/dmg -ov -format UDZO \
+            "dist/synckit-macos-${{ matrix.arch }}.dmg"
+          rm -rf build
 
       - uses: actions/upload-artifact@v4
         with:
