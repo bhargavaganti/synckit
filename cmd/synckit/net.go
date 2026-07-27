@@ -165,11 +165,13 @@ func newServeCmd() *cobra.Command {
 				}
 			}
 
+			svc := service.New(spool, port)
 			srv, err := daemon.New(daemon.Config{
-				SpoolDir:  spool,
-				BindIP:    bindIP,
-				Port:      port,
-				OnReceive: onReceive,
+				SpoolDir:     spool,
+				BindIP:       bindIP,
+				Port:         port,
+				OnReceive:    onReceive,
+				Capabilities: func() any { return svc.Capability() },
 			})
 			if err != nil {
 				return err
@@ -202,7 +204,6 @@ func newServeCmd() *cobra.Command {
 			// updates; --auto-apply additionally restores them (opt-in, since
 			// that overwrites local profiles).
 			if auto {
-				svc := service.New(spool, port)
 				eng := syncengine.New(svc, syncengine.Config{
 					AutoSnapshot: true, AutoShare: true,
 				})

@@ -30,6 +30,8 @@ func newRootCmd() *cobra.Command {
 		newPullCmd(),
 		newSyncCmd(),
 		newServeCmd(),
+		newAppsCmd(),
+		newMatrixCmd(),
 	)
 	return root
 }

@@ -24,7 +24,11 @@ type Config struct {
 	BindIP      string      // tailnet IP to bind (empty = all interfaces)
 	Port        int         // listen port
 	OnReceive   func(path string) // optional hook (e.g. auto-restore); may be nil
-	Logger      *log.Logger
+	// Capabilities, if set, returns this machine's advertisement for the
+	// /capabilities endpoint (any JSON-encodable value). Kept as a func so the
+	// daemon stays decoupled from the service layer.
+	Capabilities func() any
+	Logger       *log.Logger
 }
 
 // Server holds a running daemon.
@@ -52,6 +56,9 @@ func New(cfg Config) (*Server, error) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(w, "ok")
 	})
+	mux.HandleFunc("/capabilities", s.handleCapabilities) // advertise syncable apps
+
+
 	addr := net.JoinHostPort(cfg.BindIP, fmt.Sprintf("%d", cfg.Port))
 	s.srv = &http.Server{
 		Addr:              addr,
@@ -80,6 +87,19 @@ func (s *Server) tailnetOnly(next http.Handler) http.Handler {
 		}
 		http.Error(w, "forbidden: tailnet peers only", http.StatusForbidden)
 	})
+}
+
+func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.Capabilities == nil {
+		http.Error(w, "capabilities not available", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(s.cfg.Capabilities())
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {

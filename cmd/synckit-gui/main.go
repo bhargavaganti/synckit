@@ -172,9 +172,10 @@ func (g *gui) startDaemon() {
 	}
 
 	srv, err := daemon.New(daemon.Config{
-		SpoolDir: g.svc.SpoolDir,
-		BindIP:   bindIP,
-		Port:     g.svc.Port,
+		SpoolDir:     g.svc.SpoolDir,
+		BindIP:       bindIP,
+		Port:         g.svc.Port,
+		Capabilities: func() any { return g.svc.Capability() },
 		OnReceive: func(path string) {
 			g.setStatus("Received a bundle from a peer — check Local bundles.")
 			fyne.Do(g.refreshBundles)

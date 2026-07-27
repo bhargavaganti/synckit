@@ -48,13 +48,17 @@ type Adapter interface {
 	Exclude() []string
 }
 
-// Registry returns every adapter compiled into this build.
+// Registry returns the built-in adapters plus any user-defined apps declared in
+// ~/.synckit/apps.json. Custom apps therefore flow through detection, snapshot,
+// restore, sync and the capability matrix exactly like the built-ins.
 func Registry() []Adapter {
-	return []Adapter{
+	base := []Adapter{
 		NewChrome(),
 		NewFirefox(),
 		NewDBeaver(),
 	}
+	custom, _ := LoadConfigs(DefaultConfigPath())
+	return append(base, custom...)
 }
 
 // Find returns the adapter with the given id, or nil.
