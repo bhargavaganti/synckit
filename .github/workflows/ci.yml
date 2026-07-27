@@ -34,38 +34,23 @@ jobs:
             libgl1-mesa-dev xorg-dev libxkbcommon-dev \
             libxxf86vm-dev libwayland-dev
 
-      # Run everything under one shell, tracing each command and capturing all
-      # output to build.log, which is uploaded as an artifact (publicly
-      # downloadable) so failures are diagnosable without repo sign-in.
-      - name: Build & test (captured)
+      # Run each command capturing output; on failure emit the tail as a
+      # ::error:: annotation (newlines -> %0A). Annotations render on the run
+      # page and are readable without repo sign-in, unlike logs/summaries.
+      - name: Build & test
         shell: bash
         run: |
-          set -o pipefail
-          {
-            set -ex
+          run() { echo "== $* =="; "$@"; }
+          if ! {
             go env GOOS GOARCH CGO_ENABLED CC
-            go build ./cmd/synckit
-            go vet ./internal/...
-            go test ./internal/... -v
-            go build ./cmd/synckit-gui
-          } 2>&1 | tee build.log
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: buildlog-${{ matrix.os }}
-          path: build.log
-
-      # Job summaries render on the run page and are publicly viewable without
-      # sign-in — the reliable way to read a failure from a fork/CI observer.
-      - name: Publish log to job summary
-        if: always()
-        shell: bash
-        run: |
-          {
-            echo "### build.log — ${{ matrix.os }}"
-            echo '```'
-            tail -n 80 build.log 2>/dev/null || echo "(no build.log produced)"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+            run go build ./cmd/synckit
+            run go vet ./internal/...
+            run go test ./internal/... -v
+            run go build ./cmd/synckit-gui
+          } > build.log 2>&1; then
+            echo "===== build.log ====="; cat build.log
+            MSG=$(tail -n 40 build.log | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error::$MSG"
+            exit 1
+          fi
+          cat build.log
