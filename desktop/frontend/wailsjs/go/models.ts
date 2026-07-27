@@ -395,6 +395,7 @@ export namespace settings {
 	    tailscalePath?: string;
 	    ignore?: Record<string, Array<string>>;
 	    includeOnly?: Record<string, Array<string>>;
+	    chromeWholeUserData?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -405,6 +406,7 @@ export namespace settings {
 	        this.tailscalePath = source["tailscalePath"];
 	        this.ignore = source["ignore"];
 	        this.includeOnly = source["includeOnly"];
+	        this.chromeWholeUserData = source["chromeWholeUserData"];
 	    }
 	}
 

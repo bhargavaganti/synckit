@@ -125,6 +125,20 @@ function renderMachine(ov) {
     p.appendChild(card);
   });
 
+  // running-apps warning — these get SKIPPED by a snapshot
+  const running = ov.apps
+    .filter((a) => a.installed && (a.instances || []).some((i) => i.running))
+    .map((a) => a.id);
+  if (running.length) {
+    const warn = h('div', 'card');
+    warn.style.borderColor = 'var(--warn)';
+    warn.innerHTML =
+      '<span class="chip warn">⚠ running: ' + running.map(esc).join(', ') + '</span>' +
+      '<div class="sub" style="margin-top:6px">These will be <b>SKIPPED</b> when you snapshot — a running app\'s profile can\'t be copied safely. ' +
+      'Quit them first (fully — check the tray/Activity Monitor), then Refresh and Snapshot.</div>';
+    p.appendChild(warn);
+  }
+
   // snapshot bar
   const bar = h('div', 'card row');
   bar.appendChild(h('span', 'title', 'Create snapshot'));
@@ -149,10 +163,20 @@ async function doSnapshot() {
   status('Creating snapshot…');
   try {
     const r = await App.Snapshot(selectedApps());
-    let msg = `Snapshot created: ${r.bundle} (${r.instances} instance(s))`;
-    if (!r.encrypted) msg += '\n⚠ unencrypted — set up a key in Settings';
-    if (r.skipped && r.skipped.length) msg += '\nSkipped: ' + r.skipped.join('; ');
-    toast(msg, 'ok');
+    if (r.skipped && r.skipped.length) {
+      // Skips are important (usually "app running") — show a dialog, not a toast.
+      modal({
+        title: `Snapshot created — but ${r.skipped.length} skipped`,
+        body: `Captured ${r.instances} instance(s) into ${r.bundle}.\n\nSKIPPED (not included):\n` +
+          r.skipped.join('\n') + '\n\nQuit those apps fully, then snapshot again to include them.',
+        confirmText: 'OK', onConfirm() {},
+      });
+      $('mCancel').style.display = 'none';
+    } else {
+      let msg = `Snapshot created: ${r.bundle} (${r.instances} instance(s))`;
+      if (!r.encrypted) msg += '\n⚠ unencrypted — set up a key in Settings';
+      toast(msg, 'ok');
+    }
     refresh();
   } catch (e) { errorModal('Snapshot failed', e); }
   status('Ready.');
