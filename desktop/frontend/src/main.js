@@ -4,6 +4,7 @@ const rt = window.runtime;
 
 const $ = (id) => document.getElementById(id);
 let state = { ov: null, matrix: null };
+let lastRefresh = 0;
 
 // ---------- helpers ----------
 function status(msg) { $('status').textContent = msg; }
@@ -71,6 +72,7 @@ async function refresh() {
     renderBundles(ov);
     renderTailnet(ov);
     renderSettings(ov);
+    lastRefresh = Date.now();
     status('Ready.');
   } catch (e) {
     errorModal('Failed to load', e);
@@ -81,6 +83,16 @@ async function refresh() {
   // matrix probes the network — load separately
   App.Matrix().then((m) => { state.matrix = m; renderMatrix(m); }).catch(() => {});
 }
+
+// "Refreshed N ago" indicator, ticking every second.
+function tickRefreshed() {
+  if (!lastRefresh) return;
+  const s = Math.floor((Date.now() - lastRefresh) / 1000);
+  const t = s < 5 ? 'just now' : s < 60 ? s + 's ago' : Math.floor(s / 60) + 'm ago';
+  $('daemon').textContent = 'daemon: running · refreshed ' + t;
+}
+setInterval(tickRefreshed, 1000);
+setInterval(() => { if (!document.querySelector('.backdrop')) refresh(); }, 30000); // auto-refresh
 $('refreshBtn').onclick = refresh;
 
 // ---------- This machine ----------
@@ -284,24 +296,36 @@ async function doFetch(ip, name, apply) {
 }
 
 // ---------- Sync map ----------
-function direction(r, me, machines) {
+function relTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d) || d.getFullYear() < 2000) return ''; // zero time = never snapshotted
+  const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+}
+
+// rowStatus gives one clear, actionable status for an app across the tailnet.
+function rowStatus(r, me, machines) {
   const iHave = r.cells[me] && r.cells[me].present;
-  const otherPresent = machines.find((mc) => mc !== me && r.cells[mc] && r.cells[mc].present);
-  const otherMissing = machines.find((mc) => mc !== me && (!r.cells[mc] || !r.cells[mc].present));
-  if (!iHave && otherPresent) return { txt: '⬇ fetch from ' + otherPresent, cls: 'accent' };
-  if (iHave && otherMissing) return { txt: '⬆ send to ' + otherMissing, cls: 'good' };
-  if (iHave && otherPresent && r.sync === 'differs')
+  const peers = machines.filter((mc) => mc !== me && r.cells[mc] && r.cells[mc].present);
+  const peerMissing = machines.filter((mc) => mc !== me && (!r.cells[mc] || !r.cells[mc].present));
+  if (!iHave && peers.length) return { txt: '⬇ on ' + peers[0] + ' — install here to sync', cls: 'warn' };
+  if (iHave && !peers.length) return { txt: 'only on this machine', cls: '' };
+  if (r.sync === 'in-sync') return { txt: '✓ in sync', cls: 'good' };
+  if (r.sync === 'differs')
     return r.newestHost === me
-      ? { txt: '⬆ push (you newest)', cls: 'good' }
-      : { txt: '⬇ update from ' + r.newestHost, cls: 'accent' };
-  if (r.sync === 'in-sync') return { txt: '✓ in sync', cls: '' };
-  return { txt: '', cls: '' };
+      ? { txt: '⬆ you\'re newer — send to ' + (peerMissing[0] || peers[0]), cls: 'accent' }
+      : { txt: '⬇ update available from ' + r.newestHost, cls: 'accent' };
+  return { txt: 'snapshot both to compare', cls: '' };
 }
 
 function renderMatrix(m) {
   const p = $('panel-matrix');
   p.innerHTML = '';
-  p.appendChild(h('h2', 'sec', 'What can sync across the tailnet'));
+  p.appendChild(h('h2', 'sec', 'App inventory & sync status'));
   if (!m || !m.rows || !m.rows.length) {
     p.appendChild(emptyState('🗺️', 'Nothing to map yet', 'Start synckit on your other machines (Tailscale up on both).'));
     return;
@@ -310,16 +334,20 @@ function renderMatrix(m) {
   const wrap = h('div', 'card');
   let html = '<table class="matrix"><thead><tr><th>App / profile</th>';
   m.machines.forEach((mc) => (html += '<th>' + esc(mc) + (mc === me ? ' (you)' : '') + '</th>'));
-  html += '<th>Syncable</th><th>Direction</th></tr></thead><tbody>';
+  html += '<th>Secrets</th><th>Status</th></tr></thead><tbody>';
   m.rows.forEach((r) => {
     html += '<tr><td>' + esc(r.app + ' / ' + r.role) + '</td>';
     m.machines.forEach((mc) => {
       const c = r.cells[mc];
-      html += '<td class="mono">' + (c && c.present ? (c.version ? '✓ ' + esc(c.version) : '✓') : '—') + '</td>';
+      if (!c || !c.present) { html += '<td class="mono muted">—</td>'; return; }
+      const when = relTime(c.snapshotAt);
+      const line = (c.version ? '✓ ' + esc(c.version) : '✓') +
+        (when ? '<div class="sub">' + when + '</div>' : '<div class="sub">not snapshotted</div>');
+      html += '<td class="mono">' + line + '</td>';
     });
-    const verdict = { full: '✅ full', 'settings-only': '⚠ settings', seed: '→ seed' }[r.verdict] || r.verdict;
-    const d = direction(r, me, m.machines);
-    html += '<td>' + verdict + '</td><td><span class="chip ' + d.cls + '">' + esc(d.txt || '—') + '</span></td></tr>';
+    const verdict = { full: '✅ full', 'settings-only': '⚠ settings', seed: '—' }[r.verdict] || r.verdict;
+    const st = rowStatus(r, me, m.machines);
+    html += '<td>' + verdict + '</td><td><span class="chip ' + st.cls + '">' + esc(st.txt) + '</span></td></tr>';
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
@@ -327,7 +355,10 @@ function renderMatrix(m) {
 
   const legend = h('div', 'sub');
   legend.style.marginTop = '10px';
-  legend.innerHTML = '⬇ = can be fetched to this machine · ⬆ = this machine can send it · use the <b>Tailnet</b> tab to fetch.';
+  legend.innerHTML =
+    'Each cell shows the app version + when it was last snapshotted on that machine. ' +
+    '“install here to sync” = the app is only on the other machine — install it here first. ' +
+    'Fetch/import from the <b>Tailnet</b> tab.';
   p.appendChild(legend);
 }
 
