@@ -153,16 +153,30 @@ func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance, extraE
 	return entry, skipped, nil
 }
 
-// matchesAny reports whether rel matches any glob. Patterns ending in "/**"
-// match the directory and everything beneath it; otherwise path.Match on the
-// full relative path, and a bare basename pattern also matches by basename.
+// matchesAny reports whether rel matches any glob. A pattern ending in "/**"
+// excludes that subtree — anchored at the root (e.g. "Cache/**") OR at any
+// depth if the leading segment is a glob that matches an ancestor directory
+// (so "Cache/**" also skips "Default/Cache/x", and "*.bak/**" skips
+// "Profile 12.<ts>.bak/x"). Otherwise path.Match on the full path or basename.
 func matchesAny(rel string, globs []string) bool {
-	base := path.Base(rel)
+	parts := strings.Split(rel, "/")
+	base := parts[len(parts)-1]
+	ancestors := parts[:len(parts)-1]
 	for _, g := range globs {
 		if strings.HasSuffix(g, "/**") {
 			dir := strings.TrimSuffix(g, "/**")
 			if rel == dir || strings.HasPrefix(rel, dir+"/") {
 				return true
+			}
+			// depth-agnostic: match if any ancestor dir matches the leading segment
+			seg := dir
+			if i := strings.IndexByte(seg, '/'); i >= 0 {
+				seg = seg[:i]
+			}
+			for _, a := range ancestors {
+				if ok, _ := path.Match(seg, a); ok {
+					return true
+				}
 			}
 			continue
 		}

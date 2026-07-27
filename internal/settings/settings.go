@@ -24,6 +24,12 @@ type Settings struct {
 	// mode" — e.g. Chrome bookmarks only — since a full Chrome profile can't be
 	// copied across machines (HMAC-signed prefs, OS-encrypted secrets).
 	IncludeOnly map[string][]string `json:"includeOnly,omitempty"`
+
+	// ChromeWholeUserData syncs Chrome as one unit — the entire User Data folder
+	// including Local State (Chrome's profile registry + settings seed) — instead
+	// of per-profile. This is what lets copied profiles actually appear in Chrome
+	// (bookmarks/settings/extensions). Saved passwords still don't cross OSes.
+	ChromeWholeUserData bool `json:"chromeWholeUserData,omitempty"`
 }
 
 // IgnoreFor returns the merged extra ignore globs for an app (its own + "*").

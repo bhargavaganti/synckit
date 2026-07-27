@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bhargav/synckit/internal/bundle"
+	"github.com/bhargav/synckit/internal/settings"
 )
 
 // Chrome is the hardest of the three. Under "User Data" each "Profile N"
@@ -51,6 +52,17 @@ func (c *Chrome) Detect() ([]Instance, error) {
 	base := c.userDataDir()
 	if base == "" {
 		return nil, nil
+	}
+
+	// Whole-User-Data mode: one instance covering Local State + every profile,
+	// so Chrome actually recognises restored profiles.
+	if settings.Load().ChromeWholeUserData {
+		return []Instance{{
+			App:   c.ID(),
+			ID:    "User Data",
+			Label: "Chrome (whole profile folder)",
+			Root:  base,
+		}}, nil
 	}
 
 	// Friendly names, if available.
@@ -102,10 +114,13 @@ func (c *Chrome) Detect() ([]Instance, error) {
 // Running: Chrome's SingletonLock lives at the User Data root (not per-profile),
 // so any open Chrome window locks all profiles. We check the parent dir.
 func (c *Chrome) Running(inst Instance) (bool, error) {
-	base := filepath.Dir(inst.Root)
-	for _, name := range []string{"SingletonLock", "SingletonSocket", "SingletonCookie"} {
-		if _, err := os.Lstat(filepath.Join(base, name)); err == nil {
-			return true, nil
+	// The Singleton* lock lives at the User Data root, which is the parent of a
+	// profile dir (per-profile mode) or the instance root itself (whole mode).
+	for _, base := range []string{inst.Root, filepath.Dir(inst.Root)} {
+		for _, name := range []string{"SingletonLock", "SingletonSocket", "SingletonCookie"} {
+			if _, err := os.Lstat(filepath.Join(base, name)); err == nil {
+				return true, nil
+			}
 		}
 	}
 	return false, nil
@@ -139,8 +154,8 @@ func (c *Chrome) Exclude() []string {
 		"segmentation_platform/**", "Crashpad/**", "Crash Reports/**",
 		"BrowserMetrics/**", "Safe Browsing/**", "blob_storage/**",
 		"GPUCache", "Application Cache/**", "File System/**",
-		// volatile / lock / temp
-		"Singleton*", "*.tmp", "*-journal", "*-wal", "*-shm",
+		// volatile / lock / temp / restore backups
+		"Singleton*", "*.bak/**", "*.tmp", "*-journal", "*-wal", "*-shm",
 	}
 }
 

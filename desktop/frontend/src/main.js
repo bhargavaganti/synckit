@@ -482,12 +482,22 @@ async function renderSettings(ov) {
     'Chrome resists cross-machine profile copying — its settings are HMAC-signed and passwords are OS-encrypted, ' +
     'so a full copy won\'t stick on another machine. Use Chrome\'s own account Sync for that; synckit is best for ' +
     'same-machine backup. Firefox copies more fully.'));
+  const whole = await App.ChromeWholeUserData();
+  const wlb = h('label', 'ck');
+  wlb.style.marginTop = '10px';
+  wlb.innerHTML = '<input type="checkbox" ' + (whole ? 'checked' : '') + '> Chrome: sync the <b>whole profile folder</b> (Local State + all profiles) — this is what makes copied profiles actually appear in Chrome. Passwords still don\'t cross OSes.';
+  wlb.querySelector('input').onchange = async (e) => {
+    try { await App.SetChromeWholeUserData(e.target.checked); toast('Chrome whole-folder mode ' + (e.target.checked ? 'ON' : 'OFF') + ' — re-snapshot Chrome (and do the same on your other machine)', 'ok'); refresh(); }
+    catch (err) { errorModal('Failed', err); }
+  };
+  brCard.appendChild(wlb);
+
   const safe = await App.ChromeSafeMode();
   const lb = h('label', 'ck');
-  lb.style.marginTop = '10px';
-  lb.innerHTML = '<input type="checkbox" ' + (safe ? 'checked' : '') + '> Chrome: snapshot <b>bookmarks only</b> (the part that transfers cross-machine)';
+  lb.style.marginTop = '8px';
+  lb.innerHTML = '<input type="checkbox" ' + (safe ? 'checked' : '') + '> Chrome: <b>bookmarks only</b> (small; skips everything else)';
   lb.querySelector('input').onchange = async (e) => {
-    try { await App.SetChromeSafeMode(e.target.checked); toast('Chrome safe mode ' + (e.target.checked ? 'ON — snapshots carry bookmarks only' : 'OFF — full profile'), 'ok'); }
+    try { await App.SetChromeSafeMode(e.target.checked); toast('Chrome bookmarks-only ' + (e.target.checked ? 'ON' : 'OFF'), 'ok'); }
     catch (err) { errorModal('Failed', err); }
   };
   brCard.appendChild(lb);
