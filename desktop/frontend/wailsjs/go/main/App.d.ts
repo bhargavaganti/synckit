@@ -9,6 +9,8 @@ export function AddIgnore(arg1:string,arg2:string):Promise<void>;
 
 export function AppIDs():Promise<Array<string>>;
 
+export function ChromeSafeMode():Promise<boolean>;
+
 export function DeleteBundle(arg1:string):Promise<void>;
 
 export function Diagnose():Promise<string>;
@@ -30,6 +32,8 @@ export function Push(arg1:string,arg2:string):Promise<void>;
 export function RemoveIgnore(arg1:string,arg2:string):Promise<void>;
 
 export function Restore(arg1:string,arg2:Array<string>,arg3:boolean,arg4:boolean):Promise<Array<restore.AppOutcome>>;
+
+export function SetChromeSafeMode(arg1:boolean):Promise<void>;
 
 export function SetTailscalePath(arg1:string):Promise<void>;
 

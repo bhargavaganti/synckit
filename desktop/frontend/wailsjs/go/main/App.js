@@ -10,6 +10,10 @@ export function AppIDs() {
   return window['go']['main']['App']['AppIDs']();
 }
 
+export function ChromeSafeMode() {
+  return window['go']['main']['App']['ChromeSafeMode']();
+}
+
 export function DeleteBundle(arg1) {
   return window['go']['main']['App']['DeleteBundle'](arg1);
 }
@@ -52,6 +56,10 @@ export function RemoveIgnore(arg1, arg2) {
 
 export function Restore(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Restore'](arg1, arg2, arg3, arg4);
+}
+
+export function SetChromeSafeMode(arg1) {
+  return window['go']['main']['App']['SetChromeSafeMode'](arg1);
 }
 
 export function SetTailscalePath(arg1) {

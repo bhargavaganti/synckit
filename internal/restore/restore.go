@@ -80,9 +80,17 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 				fmt.Sprintf("restoring across machines: %s", entry.Portable.Note))
 		}
 
-		target, err := resolveTarget(ad, entry)
+		target, existing, err := resolveTarget(ad, entry)
 		if err != nil {
 			out.Skipped = err.Error()
+			res.Outcomes = append(res.Outcomes, out)
+			continue
+		}
+		// Chrome registers profiles centrally in "Local State"; a profile folder
+		// dropped in from elsewhere is ignored by Chrome. So only overwrite an
+		// EXISTING Chrome profile — never create an orphan folder Chrome won't show.
+		if !existing && entry.App == "chrome" {
+			out.Skipped = "Chrome won't recognise a copied profile (it isn't in Chrome's registry) — skipped; use Chrome's own Sign-in Sync"
 			res.Outcomes = append(res.Outcomes, out)
 			continue
 		}
@@ -158,21 +166,23 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 // resolveTarget finds where entry should land on this machine. If a matching
 // instance already exists we overwrite it in place; otherwise we place it
 // alongside detected siblings using the bundle's instance id.
-func resolveTarget(ad app.Adapter, entry bundle.AppEntry) (string, error) {
+// resolveTarget returns the destination root and whether a matching instance
+// already existed on this machine.
+func resolveTarget(ad app.Adapter, entry bundle.AppEntry) (string, bool, error) {
 	insts, err := ad.Detect()
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	for _, inst := range insts {
 		if inst.ID == entry.Instance {
-			return inst.Root, nil
+			return inst.Root, true, nil
 		}
 	}
 	// New instance: derive its root from a sibling's parent directory.
 	if len(insts) > 0 {
-		return filepath.Join(filepath.Dir(insts[0].Root), entry.Instance), nil
+		return filepath.Join(filepath.Dir(insts[0].Root), entry.Instance), false, nil
 	}
-	return "", fmt.Errorf("app not installed here; cannot place %q", entry.Instance)
+	return "", false, fmt.Errorf("app not installed here; cannot place %q", entry.Instance)
 }
 
 func currentInstance(ad app.Adapter, id string) (app.Instance, bool) {

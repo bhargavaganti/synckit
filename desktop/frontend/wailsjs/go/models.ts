@@ -394,6 +394,7 @@ export namespace settings {
 	export class Settings {
 	    tailscalePath?: string;
 	    ignore?: Record<string, Array<string>>;
+	    includeOnly?: Record<string, Array<string>>;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -403,6 +404,7 @@ export namespace settings {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.tailscalePath = source["tailscalePath"];
 	        this.ignore = source["ignore"];
+	        this.includeOnly = source["includeOnly"];
 	    }
 	}
 

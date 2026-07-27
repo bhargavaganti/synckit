@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/bhargav/synckit/internal/bundle"
 )
@@ -73,6 +74,10 @@ func (c *Chrome) Detect() ([]Instance, error) {
 			continue
 		}
 		dir := e.Name()
+		// Skip synckit restore backups (…-<ts>.bak) so they aren't shown as profiles.
+		if strings.Contains(dir, ".bak") {
+			continue
+		}
 		// A profile dir is "Default" or "Profile N"; verify by its Preferences file.
 		if dir != "Default" && !hasPrefix(dir, "Profile ") {
 			continue
