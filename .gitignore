@@ -1,0 +1,20 @@
+# build outputs
+/synckit
+/synckit.exe
+/synckit-gui
+/synckit-gui.exe
+/dist/
+
+# fyne packaging artifacts
+*.app/
+*.tar.xz
+*.dmg
+*.deb
+*.rpm
+
+# bundles / local state
+*.zip
+.synckit/
+
+# go
+/vendor/

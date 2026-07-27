@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+# Each OS runner builds its own CLI binary and packages its own native GUI with
+# the `fyne` tool (.exe on Windows, .app on macOS, .tar.xz on Linux), because a
+# Fyne GUI must be linked against the target OS's native graphics libraries.
+jobs:
+  build:
+    name: package (${{ matrix.goos }}/${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  goos: linux,   arch: amd64 }
+          - { os: macos-latest,   goos: darwin,  arch: arm64 }
+          - { os: macos-13,       goos: darwin,  arch: amd64 }
+          - { os: windows-latest, goos: windows, arch: amd64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev
+
+      - name: Install fyne packaging tool
+        run: go install fyne.io/fyne/v2/cmd/fyne@latest
+
+      - name: Build CLI
+        shell: bash
+        run: |
+          mkdir -p dist
+          EXT=""; [ "${{ matrix.goos }}" = "windows" ] && EXT=".exe"
+          go build -o "dist/synckit-${{ matrix.goos }}-${{ matrix.arch }}$EXT" ./cmd/synckit
+
+      - name: Package GUI (native)
+        shell: bash
+        working-directory: cmd/synckit-gui
+        run: |
+          fyne package --release
+          # Collect whatever fyne produced into ../../dist with a stable name.
+          mkdir -p ../../dist
+          case "${{ matrix.goos }}" in
+            windows) mv synckit.exe "../../dist/synckit-gui-windows-${{ matrix.arch }}.exe" ;;
+            darwin)  zip -ryq "../../dist/synckit-gui-darwin-${{ matrix.arch }}.zip" synckit.app ;;
+            linux)   mv synckit.tar.xz "../../dist/synckit-gui-linux-${{ matrix.arch }}.tar.xz" ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synckit-${{ matrix.goos }}-${{ matrix.arch }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

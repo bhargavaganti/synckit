@@ -1,0 +1,9 @@
+# Metadata read by `fyne package` when building the native app bundles.
+Website = "https://github.com/bhargav/synckit"
+
+[Details]
+Name = "synckit"
+ID = "dev.bhargav.synckit"
+Version = "0.1.0"
+Build = 1
+Icon = "icon.png"
