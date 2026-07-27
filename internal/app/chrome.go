@@ -143,7 +143,7 @@ func (c *Chrome) Portability() bundle.Portability {
 }
 
 func (c *Chrome) Exclude() []string {
-	return []string{
+	ex := []string{
 		// caches (regenerable)
 		"Cache/**", "Code Cache/**", "GPUCache/**", "ShaderCache/**",
 		"Service Worker/**", "GrShaderCache/**", "GraphiteDawnCache/**",
@@ -157,6 +157,15 @@ func (c *Chrome) Exclude() []string {
 		// volatile / lock / temp / restore backups
 		"Singleton*", "*.bak/**", "*.tmp", "*-journal", "*-wal", "*-shm",
 	}
+	// Lean whole-folder mode: also drop the multi-GB per-site storage so a
+	// snapshot carries profiles/bookmarks/settings/extensions but stays small.
+	if settings.Load().ChromeWholeUserData {
+		ex = append(ex,
+			"IndexedDB/**", "Local Storage/**", "Session Storage/**",
+			"Media Cache/**", "Network/**", "Sessions/**",
+		)
+	}
+	return ex
 }
 
 // hasPrefix is a tiny local helper to avoid importing strings for one call.
