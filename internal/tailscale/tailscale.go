@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/bhargav/synckit/internal/execx"
 )
 
 // Peer is one online tailnet machine.
@@ -245,7 +247,9 @@ func run(args ...string) (string, error) {
 		return "", fmt.Errorf("tailscale CLI not found on PATH or standard install locations " +
 			"(set the path in Settings, or export SYNCKIT_TAILSCALE=/path/to/tailscale)")
 	}
-	out, err := exec.Command(bin, args...).Output()
+	cmd := exec.Command(bin, args...)
+	execx.Hide(cmd) // no flashing console window on Windows GUI apps
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("tailscale %s: %w", strings.Join(args, " "), err)
 	}

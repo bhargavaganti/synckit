@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+
+	"github.com/bhargav/synckit/internal/execx"
 )
 
 // processNames maps an app id to the OS process names to terminate when the
@@ -31,6 +33,7 @@ func CloseApp(appID string) error {
 		} else {
 			cmd = exec.Command("pkill", "-x", n) // -x: exact process-name match
 		}
+		execx.Hide(cmd)
 		out, err := cmd.CombinedOutput()
 		if err == nil {
 			return nil // killed something
