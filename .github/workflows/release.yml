@@ -50,7 +50,9 @@ jobs:
         shell: bash
         working-directory: cmd/synckit-gui
         run: |
-          fyne package --release
+          # No --release: that flag code-signs (and on macOS aborts without a
+          # signing identity). Unsigned bundles are what we ship for v0.x.
+          fyne package
           # Collect whatever fyne produced into ../../dist with a stable name.
           mkdir -p ../../dist
           case "${{ matrix.goos }}" in

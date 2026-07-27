@@ -30,13 +30,19 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-dev xorg-dev libxkbcommon-dev
+          sudo apt-get install -y gcc pkg-config \
+            libgl1-mesa-dev xorg-dev libxkbcommon-dev \
+            libxxf86vm-dev libwayland-dev
 
-      - name: Vet
-        run: go vet ./...
+      # Separate steps so a per-step failure pinpoints CLI vs GUI vs tests.
+      - name: Build CLI (pure Go)
+        run: go build ./cmd/synckit
 
-      - name: Build (CLI + GUI)
-        run: go build ./...
+      - name: Vet library packages
+        run: go vet ./internal/...
 
-      - name: Test
-        run: go test ./...
+      - name: Test library packages
+        run: go test ./internal/...
+
+      - name: Build GUI (native, CGO)
+        run: go build ./cmd/synckit-gui
