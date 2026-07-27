@@ -56,3 +56,16 @@ jobs:
         with:
           name: buildlog-${{ matrix.os }}
           path: build.log
+
+      # Job summaries render on the run page and are publicly viewable without
+      # sign-in — the reliable way to read a failure from a fork/CI observer.
+      - name: Publish log to job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### build.log — ${{ matrix.os }}"
+            echo '```'
+            tail -n 80 build.log 2>/dev/null || echo "(no build.log produced)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
