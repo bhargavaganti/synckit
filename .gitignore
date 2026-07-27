@@ -18,3 +18,9 @@
 
 # go
 /vendor/
+
+# wails desktop build artifacts
+/desktop/build/bin/
+/desktop/frontend/node_modules/
+/desktop/frontend/dist/
+/desktop.exe

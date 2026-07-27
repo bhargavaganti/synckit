@@ -25,13 +25,13 @@ type Options struct {
 
 // AppOutcome is the per-app result of a restore.
 type AppOutcome struct {
-	App      string
-	Instance string
-	Target   string   // resolved destination root
-	Backup   string   // where the previous profile was moved, if any
-	Restored bool
-	Warnings []string
-	Skipped  string   // non-empty reason if this entry was skipped
+	App      string   `json:"app"`
+	Instance string   `json:"instance"`
+	Target   string   `json:"target"`
+	Backup   string   `json:"backup"`
+	Restored bool     `json:"restored"`
+	Warnings []string `json:"warnings"`
+	Skipped  string   `json:"skipped"`
 }
 
 // Result aggregates outcomes and top-level warnings.

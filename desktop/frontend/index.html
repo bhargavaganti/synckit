@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>synckit</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="logo">🔄</span>
+          <span class="name">synckit</span>
+          <span class="ver" id="version"></span>
+        </div>
+        <div class="machine" id="machine"></div>
+        <button class="btn ghost" id="refreshBtn"><span class="ico">⟳</span> Refresh</button>
+      </header>
+
+      <nav class="tabs" id="tabs">
+        <button class="tab active" data-tab="machine">This machine</button>
+        <button class="tab" data-tab="bundles">Bundles</button>
+        <button class="tab" data-tab="tailnet">Tailnet</button>
+        <button class="tab" data-tab="matrix">Sync map</button>
+        <button class="tab" data-tab="settings">Settings</button>
+      </nav>
+
+      <main id="main">
+        <section class="panel active" id="panel-machine"></section>
+        <section class="panel" id="panel-bundles"></section>
+        <section class="panel" id="panel-tailnet"></section>
+        <section class="panel" id="panel-matrix"></section>
+        <section class="panel" id="panel-settings"></section>
+      </main>
+
+      <footer class="statusbar">
+        <span id="daemon" class="muted">daemon: starting…</span>
+        <span class="spacer"></span>
+        <span id="status" class="muted">Ready.</span>
+      </footer>
+    </div>
+
+    <div id="toasts"></div>
+    <div id="modal-root"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

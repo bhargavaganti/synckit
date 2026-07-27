@@ -56,43 +56,54 @@ func DefaultSpoolDir() string {
 // ---- data types returned to UIs ----
 
 type Machine struct {
-	Hostname, OS, Arch, User string
+	Hostname string `json:"hostname"`
+	OS       string `json:"os"`
+	Arch     string `json:"arch"`
+	User     string `json:"user"`
 }
 
 type Instance struct {
-	ID, Label, Version, Root string
-	Running                  bool
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Version string `json:"version"`
+	Root    string `json:"root"`
+	Running bool   `json:"running"`
 }
 
 type App struct {
-	ID                  string
-	Installed           bool
-	SecretsCrossMachine bool
-	Note                string
-	Instances           []Instance
+	ID                  string     `json:"id"`
+	Installed           bool       `json:"installed"`
+	SecretsCrossMachine bool       `json:"secretsCrossMachine"`
+	Note                string     `json:"note"`
+	Instances           []Instance `json:"instances"`
 }
 
 type Bundle struct {
-	Name, ID, CreatedAt string
-	CreatedTime         time.Time // precise timestamp for sync comparisons
-	Apps                []string
-	SizeMB              float64
-	OriginOS, OriginHost string
+	Name        string    `json:"name"`
+	ID          string    `json:"id"`
+	CreatedAt   string    `json:"createdAt"`
+	CreatedTime time.Time `json:"createdTime"` // precise timestamp for sync comparisons
+	Apps        []string  `json:"apps"`
+	SizeMB      float64   `json:"sizeMB"`
+	OriginOS    string    `json:"originOS"`
+	OriginHost  string    `json:"originHost"`
 }
 
 type Peer struct {
-	Host, IP, OS string
-	Online       bool
-	Serving      bool
-	Bundles      []Bundle
+	Host    string   `json:"host"`
+	IP      string   `json:"ip"`
+	OS      string   `json:"os"`
+	Online  bool     `json:"online"`
+	Serving bool     `json:"serving"`
+	Bundles []Bundle `json:"bundles"`
 }
 
 type Overview struct {
-	Machine      Machine
-	Apps         []App
-	LocalBundles []Bundle
-	Peers        []Peer
-	TailscaleUp  bool
+	Machine      Machine `json:"machine"`
+	Apps         []App   `json:"apps"`
+	LocalBundles []Bundle `json:"localBundles"`
+	Peers        []Peer  `json:"peers"`
+	TailscaleUp  bool    `json:"tailscaleUp"`
 }
 
 // ---- reads ----
@@ -233,6 +244,20 @@ func (s *Service) Restore(bundleName string, apps []string, dryRun, force bool) 
 	src := filepath.Join(s.SpoolDir, filepath.Base(bundleName))
 	res, err := restore.Run(app.Registry(), restore.Options{
 		Src: src, Selected: selection(apps), DryRun: dryRun, Force: force,
+		BackupTag: time.Now().Format("20060102-150405"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res.Outcomes, nil
+}
+
+// RestoreOpts is Restore with the force-close option (terminate a running
+// target app before restoring).
+func (s *Service) RestoreOpts(bundleName string, apps []string, dryRun, force, forceClose bool) ([]restore.AppOutcome, error) {
+	src := filepath.Join(s.SpoolDir, filepath.Base(bundleName))
+	res, err := restore.Run(app.Registry(), restore.Options{
+		Src: src, Selected: selection(apps), DryRun: dryRun, Force: force, ForceClose: forceClose,
 		BackupTag: time.Now().Format("20060102-150405"),
 	})
 	if err != nil {
