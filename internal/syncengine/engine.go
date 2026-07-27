@@ -16,10 +16,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/bhargav/synckit/internal/bundle"
 	"github.com/bhargav/synckit/internal/service"
 )
 
@@ -51,8 +53,9 @@ type Engine struct {
 	myHost string
 
 	mu          sync.Mutex
-	prevRunning map[string]bool // app id -> was any instance running last tick
+	prevRunning map[string]bool    // app id -> was any instance running last tick
 	lastSnap    time.Time
+	lastFP      map[string]string  // app/instance -> content fingerprint of last snapshot
 
 	// OnActivity reports a human-readable line of what the engine just did.
 	OnActivity func(string)
@@ -154,6 +157,22 @@ func (e *Engine) doSnapshot(reason string, ov service.Overview) {
 		e.activity("Auto-snapshot skipped (" + reason + "): " + err.Error())
 		return
 	}
+
+	// Delta detection: if every captured profile's content fingerprint matches
+	// the previous auto-snapshot, nothing changed — discard the redundant bundle
+	// instead of storing and re-sharing an identical copy.
+	newFP := fingerprints(res.Apps)
+	e.mu.Lock()
+	unchanged := len(e.lastFP) > 0 && equalFP(e.lastFP, newFP)
+	if !unchanged {
+		e.lastFP = newFP
+	}
+	e.mu.Unlock()
+	if unchanged {
+		_ = os.Remove(filepath.Join(e.svc.SpoolDir, res.Bundle))
+		return
+	}
+
 	e.activity(fmt.Sprintf("Auto-snapshot %s: %s (%d instance(s))", reason, res.Bundle, len(res.Apps)))
 
 	if e.cfg.AutoShare {
@@ -236,6 +255,28 @@ func computeUpdates(myHost string, ov service.Overview) []Update {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].App < out[j].App })
 	return out
+}
+
+// fingerprints maps each captured profile to its content fingerprint.
+func fingerprints(apps []bundle.AppEntry) map[string]string {
+	m := make(map[string]string, len(apps))
+	for _, a := range apps {
+		m[a.App+"/"+a.Instance] = a.Fingerprint
+	}
+	return m
+}
+
+// equalFP reports whether two fingerprint sets are identical.
+func equalFP(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 func humanNewer(peer, local time.Time) string {

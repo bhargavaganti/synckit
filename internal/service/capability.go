@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/bhargav/synckit/internal/transport"
 )
 
 // Capability is what one machine advertises to the tailnet: its identity plus,
@@ -31,6 +33,10 @@ type ProfileCap struct {
 	Label   string `json:"label"`
 	Version string `json:"version"`
 	Running bool   `json:"running"`
+	// Fingerprint/SnapshotAt describe this machine's newest local bundle for the
+	// role, so the matrix can tell "in sync" from "differs" and who's newest.
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	SnapshotAt  time.Time `json:"snapshotAt,omitempty"`
 }
 
 // roleOf derives a stable, cross-machine identity for a profile. Chrome and
@@ -53,17 +59,36 @@ func (s *Service) Capability() Capability {
 	for _, a := range s.LocalApps() {
 		ac := AppCap{ID: a.ID, Installed: a.Installed, SecretsCrossMachine: a.SecretsCrossMachine}
 		for _, inst := range a.Instances {
+			role := roleOf(a.ID, inst.ID)
+			fp, at := s.latestEntry(a.ID, role)
 			ac.Profiles = append(ac.Profiles, ProfileCap{
-				ID:      inst.ID,
-				Role:    roleOf(a.ID, inst.ID),
-				Label:   inst.Label,
-				Version: inst.Version,
-				Running: inst.Running,
+				ID:          inst.ID,
+				Role:        role,
+				Label:       inst.Label,
+				Version:     inst.Version,
+				Running:     inst.Running,
+				Fingerprint: fp,
+				SnapshotAt:  at,
 			})
 		}
 		apps = append(apps, ac)
 	}
 	return Capability{Machine: s.MachineInfo(), Apps: apps}
+}
+
+// latestEntry returns the fingerprint and time of the newest local bundle
+// entry for the given app + cross-machine role (zero values if none).
+func (s *Service) latestEntry(app, role string) (fingerprint string, at time.Time) {
+	refs, _ := transport.NewFile(s.SpoolDir).List()
+	for _, ref := range refs {
+		for _, e := range ref.Meta.Apps {
+			if e.App == app && roleOf(app, e.Instance) == role && ref.Meta.CreatedAt.After(at) {
+				at = ref.Meta.CreatedAt
+				fingerprint = e.Fingerprint
+			}
+		}
+	}
+	return
 }
 
 // PeerCapability fetches a peer's advertisement from its /capabilities endpoint.
@@ -89,10 +114,12 @@ func (s *Service) PeerCapability(ip string) (Capability, error) {
 
 // Cell is one machine's state for a given app/role.
 type Cell struct {
-	Present   bool   `json:"present"`
-	Version   string `json:"version"`
-	ProfileID string `json:"profileId"`
-	Running   bool   `json:"running"`
+	Present     bool      `json:"present"`
+	Version     string    `json:"version"`
+	ProfileID   string    `json:"profileId"`
+	Running     bool      `json:"running"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	SnapshotAt  time.Time `json:"snapshotAt,omitempty"`
 }
 
 // Verdict classifies what can flow for a role across the tailnet.
@@ -109,6 +136,15 @@ const (
 	VerdictSeed Verdict = "seed"
 )
 
+// SyncState describes whether the copies that exist are already identical.
+type SyncState string
+
+const (
+	SyncUnknown SyncState = ""         // <2 fingerprinted copies to compare
+	SyncInSync  SyncState = "in-sync"  // all present copies are byte-identical
+	SyncDiffers SyncState = "differs"  // copies differ; NewestHost has the latest
+)
+
 type MatrixRow struct {
 	App                 string          `json:"app"`
 	Role                string          `json:"role"`
@@ -116,6 +152,8 @@ type MatrixRow struct {
 	Cells               map[string]Cell `json:"cells"` // hostname -> state
 	Verdict             Verdict         `json:"verdict"`
 	Note                string          `json:"note"`
+	Sync                SyncState       `json:"sync"`
+	NewestHost          string          `json:"newestHost,omitempty"`
 }
 
 type Matrix struct {
@@ -157,6 +195,7 @@ func BuildMatrix(local Capability, peers []Capability) Matrix {
 				}
 				r.Cells[c.Machine.Hostname] = Cell{
 					Present: true, Version: p.Version, ProfileID: p.ID, Running: p.Running,
+					Fingerprint: p.Fingerprint, SnapshotAt: p.SnapshotAt,
 				}
 			}
 		}
@@ -181,6 +220,27 @@ func BuildMatrix(local Capability, peers []Capability) Matrix {
 			r.Verdict = VerdictSettings
 			r.Note = "settings, bookmarks & extensions only — passwords/cookies are bound to their origin machine"
 		}
+
+		// Sync state from fingerprints of the machines that have a snapshot.
+		var fps []string
+		var newestAt time.Time
+		for _, m := range machines {
+			c := r.Cells[m]
+			if c.Present && c.Fingerprint != "" {
+				fps = append(fps, c.Fingerprint)
+				if c.SnapshotAt.After(newestAt) {
+					newestAt = c.SnapshotAt
+					r.NewestHost = m
+				}
+			}
+		}
+		if len(fps) >= 2 {
+			if allEqual(fps) {
+				r.Sync = SyncInSync
+			} else {
+				r.Sync = SyncDiffers
+			}
+		}
 	}
 
 	// Stable order: app, then role.
@@ -195,6 +255,16 @@ func BuildMatrix(local Capability, peers []Capability) Matrix {
 		out.Rows = append(out.Rows, *rows[k])
 	}
 	return out
+}
+
+// allEqual reports whether every string in s is identical.
+func allEqual(s []string) bool {
+	for i := 1; i < len(s); i++ {
+		if s[i] != s[0] {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // TailnetMatrix gathers capabilities from every serving peer and builds the

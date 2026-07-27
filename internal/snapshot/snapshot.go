@@ -136,6 +136,7 @@ func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance) (bundl
 	if err != nil {
 		return bundle.AppEntry{}, err
 	}
+	entry.Fingerprint = bundle.Fingerprint(entry.Checksums)
 	return entry, nil
 }
 

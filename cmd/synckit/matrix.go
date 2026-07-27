@@ -62,13 +62,27 @@ and secret portability is applied per app (Chrome secrets stay machine-bound).`,
 					}
 					fmt.Printf("%-*s", colW[i]+2, cell)
 				}
-				fmt.Printf("%s  (%s)\n", verdictLabel(r.Verdict), r.Note)
+				fmt.Printf("%-16s%s\n", verdictLabel(r.Verdict), syncLabel(r))
 			}
 			return nil
 		},
 	}
 	cmd.Flags().IntVar(&port, "port", transport.DefaultPort, "daemon port on peers")
 	return cmd
+}
+
+func syncLabel(r service.MatrixRow) string {
+	switch r.Sync {
+	case service.SyncInSync:
+		return "✓ in sync"
+	case service.SyncDiffers:
+		if r.NewestHost != "" {
+			return "≠ differs (" + r.NewestHost + " newest)"
+		}
+		return "≠ differs"
+	default:
+		return r.Note
+	}
 }
 
 func verdictLabel(v service.Verdict) string {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -36,6 +37,24 @@ func UseVault(v Vaulter) { activeVault = v }
 
 // Encrypted reports whether bundle encryption is currently enabled.
 func Encrypted() bool { return activeVault != nil }
+
+// Fingerprint reduces a file->checksum map to one stable content hash. Two
+// profiles with identical files (regardless of walk order) hash the same.
+func Fingerprint(checksums map[string]string) string {
+	paths := make([]string, 0, len(checksums))
+	for p := range checksums {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	h := sha256.New()
+	for _, p := range paths {
+		h.Write([]byte(p))
+		h.Write([]byte{0})
+		h.Write([]byte(checksums[p]))
+		h.Write([]byte{'\n'})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
 
 // ageMagic is the header of an age-encrypted stream.
 const ageMagic = "age-encryption.org/v1"

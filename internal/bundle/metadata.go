@@ -41,6 +41,10 @@ type AppEntry struct {
 	Portable Portability `json:"portable"`
 	// Checksums maps each payload-relative file path to its SHA-256 hex digest.
 	Checksums map[string]string `json:"checksums"`
+	// Fingerprint is a single content hash over Checksums — identical content on
+	// two machines yields the same fingerprint, so synckit can tell "in sync"
+	// from "differs" and skip re-snapshotting unchanged profiles.
+	Fingerprint string `json:"fingerprint"`
 }
 
 // Origin captures where a bundle was produced, for skew/portability warnings.
