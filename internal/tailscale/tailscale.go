@@ -191,15 +191,19 @@ func Diagnose() string {
 		return b.String()
 	}
 	fmt.Fprintf(&b, "tailscale CLI: %s\n", bin)
-	if out, err := run("version"); err == nil {
-		fmt.Fprintf(&b, "version: %s\n", firstLine(out))
+	hadErr := false
+	verOut, verErr := run("version")
+	if verErr == nil {
+		fmt.Fprintf(&b, "version: %s\n", firstLine(verOut))
 	} else {
-		fmt.Fprintf(&b, "version: ERROR %v\n", err)
+		hadErr = true
+		fmt.Fprintf(&b, "version: ERROR %v\n", verErr)
 	}
 	if ip, err := SelfIP(); err == nil {
 		fmt.Fprintf(&b, "tailnet IP: %s\n", ip)
 	} else {
-		fmt.Fprintf(&b, "tailnet IP: ERROR %v (is `tailscale up`?)\n", err)
+		hadErr = true
+		fmt.Fprintf(&b, "tailnet IP: ERROR %v\n", err)
 	}
 	if peers, err := Peers(false); err == nil {
 		fmt.Fprintf(&b, "peers found: %d\n", len(peers))
@@ -211,7 +215,19 @@ func Diagnose() string {
 			fmt.Fprintf(&b, "  %-20s %-16s %-8s %s\n", p.Host, p.IP, p.OS, state)
 		}
 	} else {
+		hadErr = true
 		fmt.Fprintf(&b, "peers: ERROR %v\n", err)
+	}
+
+	// The macOS App Store Tailscale ships a CLI that only works when its app is
+	// running & connected, and often fails with "CLIError". Point users at a
+	// reliable CLI.
+	if hadErr && (strings.Contains(bin, "Tailscale.app") ||
+		strings.Contains(verOut, "CLIError") || strings.Contains(verOut, "GUI failed to start")) {
+		fmt.Fprintln(&b, "\nhint: this looks like the macOS App Store Tailscale, whose CLI is unreliable.")
+		fmt.Fprintln(&b, "  1) make sure the Tailscale app is running & shows Connected, then retry; or")
+		fmt.Fprintln(&b, "  2) install a working CLI:  brew install tailscale")
+		fmt.Fprintln(&b, "     then set its path here, e.g. /opt/homebrew/bin/tailscale")
 	}
 	return b.String()
 }
