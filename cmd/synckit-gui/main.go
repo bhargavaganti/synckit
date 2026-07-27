@@ -38,6 +38,7 @@ type gui struct {
 	snapChecks *fyne.Container
 	bundlesBox *fyne.Container
 	peersBox   *fyne.Container
+	matrixBox  *fyne.Container
 
 	installed []string // installed app ids, for snapshot selection
 }
@@ -70,6 +71,7 @@ func main() {
 		snapChecks: container.NewHBox(),
 		bundlesBox: container.NewVBox(),
 		peersBox:   container.NewVBox(),
+		matrixBox:  container.NewVBox(),
 	}
 	w.SetContent(g.build())
 
@@ -103,6 +105,7 @@ func (g *gui) build() fyne.CanvasObject {
 		container.NewTabItemWithIcon("This machine", theme.ComputerIcon(), thisMachine),
 		container.NewTabItemWithIcon("Local bundles", theme.StorageIcon(), container.NewScroll(g.bundlesBox)),
 		container.NewTabItemWithIcon("Tailnet", theme.RadioButtonIcon(), container.NewScroll(g.peersBox)),
+		container.NewTabItemWithIcon("Sync map", theme.GridIcon(), container.NewScroll(g.matrixBox)),
 	)
 	tabs.SetTabLocation(container.TabLocationTop)
 
@@ -213,6 +216,70 @@ func (g *gui) refresh() {
 			g.status.SetText("Ready.")
 		})
 	}()
+	// The matrix probes peers over the network — fetch it separately so the rest
+	// of the UI doesn't wait on it.
+	go func() {
+		m := g.svc.TailnetMatrix()
+		fyne.Do(func() { g.renderMatrix(m) })
+	}()
+}
+
+// renderMatrix paints the tailnet syncability grid: apps by role down the side,
+// machines across the top, with a per-row syncable verdict + in-sync/differs.
+func (g *gui) renderMatrix(m service.Matrix) {
+	g.matrixBox.RemoveAll()
+	if len(m.Rows) == 0 {
+		g.matrixBox.Add(widget.NewLabel("No apps detected yet. Start `synckit serve` on your\nother machines so they advertise over the tailnet."))
+		g.matrixBox.Refresh()
+		return
+	}
+	cols := len(m.Machines) + 2
+	grid := container.NewGridWithColumns(cols)
+	bold := func(s string) fyne.CanvasObject {
+		return widget.NewLabelWithStyle(s, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	}
+	grid.Add(bold("App / profile"))
+	for _, mc := range m.Machines {
+		grid.Add(bold(mc))
+	}
+	grid.Add(bold("Syncable"))
+
+	for _, r := range m.Rows {
+		grid.Add(widget.NewLabel(r.App + " / " + r.Role))
+		for _, mc := range m.Machines {
+			c := r.Cells[mc]
+			txt := "—"
+			if c.Present {
+				txt = "✓"
+				if c.Version != "" {
+					txt = "✓ " + c.Version
+				}
+			}
+			grid.Add(widget.NewLabel(txt))
+		}
+		grid.Add(widget.NewLabel(matrixStatus(r)))
+	}
+	g.matrixBox.Add(grid)
+	g.matrixBox.Refresh()
+}
+
+func matrixStatus(r service.MatrixRow) string {
+	verdict := map[service.Verdict]string{
+		service.VerdictFull:     "✅ full",
+		service.VerdictSettings: "⚠ settings",
+		service.VerdictSeed:     "→ seed",
+	}[r.Verdict]
+	switch r.Sync {
+	case service.SyncInSync:
+		return verdict + " · ✓ in sync"
+	case service.SyncDiffers:
+		if r.NewestHost != "" {
+			return verdict + " · ≠ " + r.NewestHost + " newest"
+		}
+		return verdict + " · ≠ differs"
+	default:
+		return verdict
+	}
 }
 
 func (g *gui) refreshBundles() {
