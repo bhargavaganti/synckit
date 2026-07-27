@@ -266,18 +266,33 @@ async function doFetch(ip, name, apply) {
 }
 
 // ---------- Sync map ----------
+function direction(r, me, machines) {
+  const iHave = r.cells[me] && r.cells[me].present;
+  const otherPresent = machines.find((mc) => mc !== me && r.cells[mc] && r.cells[mc].present);
+  const otherMissing = machines.find((mc) => mc !== me && (!r.cells[mc] || !r.cells[mc].present));
+  if (!iHave && otherPresent) return { txt: '⬇ fetch from ' + otherPresent, cls: 'accent' };
+  if (iHave && otherMissing) return { txt: '⬆ send to ' + otherMissing, cls: 'good' };
+  if (iHave && otherPresent && r.sync === 'differs')
+    return r.newestHost === me
+      ? { txt: '⬆ push (you newest)', cls: 'good' }
+      : { txt: '⬇ update from ' + r.newestHost, cls: 'accent' };
+  if (r.sync === 'in-sync') return { txt: '✓ in sync', cls: '' };
+  return { txt: '', cls: '' };
+}
+
 function renderMatrix(m) {
   const p = $('panel-matrix');
   p.innerHTML = '';
   p.appendChild(h('h2', 'sec', 'What can sync across the tailnet'));
   if (!m || !m.rows || !m.rows.length) {
-    p.appendChild(emptyState('🗺️', 'Nothing to map yet', 'Start synckit on your other machines.'));
+    p.appendChild(emptyState('🗺️', 'Nothing to map yet', 'Start synckit on your other machines (Tailscale up on both).'));
     return;
   }
+  const me = state.ov ? state.ov.machine.hostname : '';
   const wrap = h('div', 'card');
   let html = '<table class="matrix"><thead><tr><th>App / profile</th>';
-  m.machines.forEach((mc) => (html += '<th>' + esc(mc) + '</th>'));
-  html += '<th>Syncable</th><th>Status</th></tr></thead><tbody>';
+  m.machines.forEach((mc) => (html += '<th>' + esc(mc) + (mc === me ? ' (you)' : '') + '</th>'));
+  html += '<th>Syncable</th><th>Direction</th></tr></thead><tbody>';
   m.rows.forEach((r) => {
     html += '<tr><td>' + esc(r.app + ' / ' + r.role) + '</td>';
     m.machines.forEach((mc) => {
@@ -285,12 +300,35 @@ function renderMatrix(m) {
       html += '<td class="mono">' + (c && c.present ? (c.version ? '✓ ' + esc(c.version) : '✓') : '—') + '</td>';
     });
     const verdict = { full: '✅ full', 'settings-only': '⚠ settings', seed: '→ seed' }[r.verdict] || r.verdict;
-    const sync = r.sync === 'in-sync' ? '✓ in sync' : r.sync === 'differs' ? '≠ ' + (r.newestHost ? r.newestHost + ' newest' : 'differs') : '';
-    html += '<td>' + verdict + '</td><td>' + esc(sync) + '</td></tr>';
+    const d = direction(r, me, m.machines);
+    html += '<td>' + verdict + '</td><td><span class="chip ' + d.cls + '">' + esc(d.txt || '—') + '</span></td></tr>';
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
   p.appendChild(wrap);
+
+  const legend = h('div', 'sub');
+  legend.style.marginTop = '10px';
+  legend.innerHTML = '⬇ = can be fetched to this machine · ⬆ = this machine can send it · use the <b>Tailnet</b> tab to fetch.';
+  p.appendChild(legend);
+}
+
+// ---------- transfer progress ----------
+function showTransfer(d) {
+  let bar = $('xfer');
+  if (!d.active) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = h('div', 'card');
+    bar.id = 'xfer';
+    bar.style.cssText = 'position:fixed;left:18px;right:18px;bottom:44px;z-index:55;margin:0';
+    document.body.appendChild(bar);
+  }
+  const pct = d.total > 0 ? Math.round((d.done / d.total) * 100) : null;
+  const mb = (n) => (n / (1 << 20)).toFixed(1);
+  bar.innerHTML =
+    '<div class="row" style="margin-bottom:8px"><span class="title">Transferring ' + esc(d.name) + '</span>' +
+    '<span class="right sub">' + (pct !== null ? pct + '% · ' + mb(d.done) + ' / ' + mb(d.total) + ' MB' : mb(d.done) + ' MB') + '</span></div>' +
+    '<div class="progress"><i style="width:' + (pct !== null ? pct : 30) + '%"></i></div>';
 }
 
 // ---------- Settings ----------
@@ -365,6 +403,7 @@ function emptyState(icon, title, sub) {
 // ---------- events + init ----------
 if (rt && rt.EventsOn) {
   rt.EventsOn('bundle-received', () => { toast('Received a bundle from a peer', 'ok'); refresh(); });
+  rt.EventsOn('transfer', (d) => showTransfer(d));
 }
 App.Version().then((v) => ($('version').textContent = v)).catch(() => {});
 $('daemon').textContent = 'daemon: running';

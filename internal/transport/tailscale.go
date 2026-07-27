@@ -87,6 +87,14 @@ func (t *Tailscale) Put(srcPath string) (Ref, error) {
 }
 
 func (t *Tailscale) Get(ref Ref, dstPath string) error {
+	return t.GetWithProgress(ref, dstPath, nil)
+}
+
+// ProgressFunc receives (bytesDone, totalBytes); total is -1 if unknown.
+type ProgressFunc func(done, total int64)
+
+// GetWithProgress fetches a bundle and reports download progress.
+func (t *Tailscale) GetWithProgress(ref Ref, dstPath string, cb ProgressFunc) error {
 	name := ref.Location
 	if i := lastColon(name); i >= 0 {
 		name = name[i+1:]
@@ -107,11 +115,32 @@ func (t *Tailscale) Get(ref Ref, dstPath string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	src := io.Reader(resp.Body)
+	if cb != nil {
+		src = &progressReader{r: resp.Body, total: resp.ContentLength, cb: cb}
+	}
+	if _, err := io.Copy(out, src); err != nil {
 		out.Close()
 		return err
 	}
 	return out.Close()
+}
+
+// progressReader reports byte progress about every megabyte, plus on EOF.
+type progressReader struct {
+	r          io.Reader
+	done, last, total int64
+	cb         ProgressFunc
+}
+
+func (p *progressReader) Read(b []byte) (int, error) {
+	n, err := p.r.Read(b)
+	p.done += int64(n)
+	if p.done-p.last >= 1<<20 || err != nil {
+		p.last = p.done
+		p.cb(p.done, p.total)
+	}
+	return n, err
 }
 
 func (t *Tailscale) List() ([]Ref, error) {

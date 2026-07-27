@@ -268,15 +268,20 @@ func (s *Service) RestoreOpts(bundleName string, apps []string, dryRun, force, f
 
 // Fetch pulls a bundle from a peer into the spool, optionally restoring it.
 func (s *Service) Fetch(peerIP, name string, apply, dryRun bool) ([]restore.AppOutcome, error) {
+	return s.FetchProgress(peerIP, name, apply, dryRun, nil)
+}
+
+// FetchProgress is Fetch with a download-progress callback (done, total bytes).
+func (s *Service) FetchProgress(peerIP, name string, apply, dryRun bool, onProgress transport.ProgressFunc) ([]restore.AppOutcome, error) {
 	tr := transport.NewTailscale(peerIP, s.Port)
 	dst := filepath.Join(s.SpoolDir, name)
-	if err := tr.Get(transport.Ref{Location: peerIP + ":" + name}, dst); err != nil {
+	if err := tr.GetWithProgress(transport.Ref{Location: peerIP + ":" + name}, dst, onProgress); err != nil {
 		return nil, err
 	}
 	if !apply {
 		return nil, nil
 	}
-	return s.Restore(name, nil, dryRun, false)
+	return s.RestoreOpts(name, nil, dryRun, false, false)
 }
 
 // PruneOwnSnapshots keeps the newest `keep` snapshots that originated on THIS

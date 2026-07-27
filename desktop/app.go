@@ -106,7 +106,12 @@ func (a *App) Restore(bundleName string, apps []string, dryRun, forceClose bool)
 }
 
 func (a *App) Fetch(peerIP, name string, apply, dryRun bool) ([]service.Outcome, error) {
-	return a.svc.Fetch(peerIP, name, apply, dryRun)
+	a.emit("transfer", map[string]any{"name": name, "done": 0, "total": -1, "active": true})
+	outcomes, err := a.svc.FetchProgress(peerIP, name, apply, dryRun, func(done, total int64) {
+		a.emit("transfer", map[string]any{"name": name, "done": done, "total": total, "active": true})
+	})
+	a.emit("transfer", map[string]any{"name": name, "done": 1, "total": 1, "active": false})
+	return outcomes, err
 }
 
 func (a *App) Push(bundleName, peerIP string) error {

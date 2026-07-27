@@ -103,8 +103,66 @@ jobs:
           name: synckit-${{ matrix.goos }}-${{ matrix.arch }}
           path: dist/*
 
+  # The Wails desktop app (modern UI) — built per-OS with its native webview.
+  desktop:
+    name: desktop (${{ matrix.goos }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  goos: linux,   arch: amd64 }
+          - { os: macos-latest,   goos: darwin,  arch: arm64 }
+          - { os: windows-latest, goos: windows, arch: amd64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.22', cache: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Install Linux webview deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+
+      - name: Build desktop app
+        shell: bash
+        working-directory: desktop
+        run: |
+          VLD="-X github.com/bhargav/synckit/internal/version.Version=${GITHUB_REF_NAME}"
+          TAGS=""
+          [ "${{ matrix.goos }}" = "linux" ] && TAGS="-tags webkit2_41"
+          wails build $TAGS -ldflags "$VLD"
+
+      - name: Package desktop artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          case "${{ matrix.goos }}" in
+            windows)
+              cp desktop/build/bin/synckit-desktop.exe "dist/synckit-desktop-windows-${{ matrix.arch }}.exe" ;;
+            linux)
+              cp desktop/build/bin/synckit-desktop "dist/synckit-desktop-linux-${{ matrix.arch }}"
+              chmod +x "dist/synckit-desktop-linux-${{ matrix.arch }}" ;;
+            darwin)
+              mkdir -p dmg && cp -R desktop/build/bin/synckit-desktop.app dmg/
+              ln -s /Applications dmg/Applications
+              hdiutil create -volname "synckit" -srcfolder dmg -ov -format UDZO \
+                "dist/synckit-desktop-macos-${{ matrix.arch }}.dmg" ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.goos }}-${{ matrix.arch }}
+          path: dist/*
+
   release:
-    needs: build
+    needs: [build, desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
