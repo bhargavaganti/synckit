@@ -307,6 +307,11 @@ func (s *Service) PruneOwnSnapshots(keep int) int {
 	return removed
 }
 
+// DeleteBundle removes a single local bundle by file name.
+func (s *Service) DeleteBundle(name string) error {
+	return os.Remove(filepath.Join(s.SpoolDir, filepath.Base(name)))
+}
+
 // Push sends a local bundle to a peer's daemon.
 func (s *Service) Push(bundleName, peerIP string) error {
 	src := filepath.Join(s.SpoolDir, filepath.Base(bundleName))

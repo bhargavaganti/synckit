@@ -159,18 +159,62 @@ async function doSnapshot() {
 }
 
 // ---------- Bundles ----------
+let bundleFilter = 'all';
+
 function renderBundles(ov) {
   const p = $('panel-bundles');
   p.innerHTML = '';
+  const all = ov.localBundles || [];
   p.appendChild(h('h2', 'sec', 'Local bundles'));
-  if (!ov.localBundles || !ov.localBundles.length) {
-    p.appendChild(emptyState('📦', 'No bundles yet', 'Take a snapshot to create one.'));
+  if (!all.length) {
+    p.appendChild(emptyState('📦', 'No bundles yet', 'Take a snapshot, or fetch one from the Tailnet tab.'));
     return;
   }
-  ov.localBundles.forEach((b) => p.appendChild(bundleCard(b, [
+
+  // distinct source machines for the filter
+  const hosts = [...new Set(all.map((b) => b.originHost).filter(Boolean))].sort();
+  if (bundleFilter !== 'all' && !hosts.includes(bundleFilter)) bundleFilter = 'all';
+  const shown = bundleFilter === 'all' ? all : all.filter((b) => b.originHost === bundleFilter);
+
+  // toolbar: filter dropdown + delete-all
+  const bar = h('div', 'card row');
+  const lbl = h('span', 'sub', 'From machine:');
+  const sel = document.createElement('select');
+  sel.className = 'text';
+  sel.style.maxWidth = '220px';
+  sel.innerHTML = '<option value="all">All machines (' + all.length + ')</option>' +
+    hosts.map((hn) => '<option value="' + esc(hn) + '"' + (hn === bundleFilter ? ' selected' : '') + '>' +
+      esc(hn) + ' (' + all.filter((b) => b.originHost === hn).length + ')</option>').join('');
+  sel.value = bundleFilter;
+  sel.onchange = () => { bundleFilter = sel.value; renderBundles(state.ov); };
+  bar.appendChild(lbl);
+  bar.appendChild(sel);
+  const del = h('button', 'btn danger right', '🗑 Delete ' + (bundleFilter === 'all' ? 'all' : 'shown') + ' (' + shown.length + ')');
+  del.onclick = () => confirmDeleteBundles(shown);
+  bar.appendChild(del);
+  p.appendChild(bar);
+
+  shown.forEach((b) => p.appendChild(bundleCard(b, [
     ['Dry-run', 'btn', () => doRestore(b.name, [], true, false)],
     ['Restore', 'btn primary', () => confirmRestore(b.name)],
+    ['🗑', 'btn ghost', () => confirmDeleteBundles([b])],
   ])));
+}
+
+function confirmDeleteBundles(list) {
+  if (!list.length) return;
+  const what = list.length === 1 ? list[0].id || list[0].name : list.length + ' bundles';
+  modal({
+    title: 'Delete ' + what + '?',
+    body: 'This permanently removes the bundle file(s) from this machine. Your app profiles are not affected. This cannot be undone.',
+    confirmText: 'Delete', danger: true,
+    onConfirm: async () => {
+      let n = 0;
+      for (const b of list) { try { await App.DeleteBundle(b.name); n++; } catch (e) {} }
+      toast('Deleted ' + n + ' bundle(s)', 'ok');
+      refresh();
+    },
+  });
 }
 
 function bundleCard(b, actions) {

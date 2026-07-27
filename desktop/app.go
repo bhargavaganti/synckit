@@ -118,6 +118,8 @@ func (a *App) Push(bundleName, peerIP string) error {
 	return a.svc.Push(bundleName, peerIP)
 }
 
+func (a *App) DeleteBundle(name string) error { return a.svc.DeleteBundle(name) }
+
 // ---- settings / ignore ----
 
 func (a *App) GetSettings() settings.Settings { return settings.Load() }
