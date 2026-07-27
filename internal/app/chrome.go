@@ -126,7 +126,8 @@ func (c *Chrome) Exclude() []string {
 	return []string{
 		"Cache/**", "Code Cache/**", "GPUCache/**", "ShaderCache/**",
 		"Service Worker/CacheStorage/**", "Service Worker/ScriptCache/**",
-		"GrShaderCache/**", "component_crx_cache/**",
+		"GrShaderCache/**", "GraphiteDawnCache/**", "DawnGraphiteCache/**",
+		"DawnCache/**", "DawnWebGPUCache/**", "component_crx_cache/**",
 		"*.tmp", "*-journal", "*-wal", "*-shm",
 	}
 }

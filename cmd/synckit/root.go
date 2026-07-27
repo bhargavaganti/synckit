@@ -12,18 +12,26 @@ import (
 
 	"github.com/bhargav/synckit/internal/app"
 	"github.com/bhargav/synckit/internal/bundle"
+	"github.com/bhargav/synckit/internal/settings"
+	ts "github.com/bhargav/synckit/internal/tailscale"
 	"github.com/bhargav/synckit/internal/vault"
+	"github.com/bhargav/synckit/internal/version"
 )
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "synckit",
 		Short:         "Sync Chrome, Firefox and DBeaver profiles across machines",
+		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// Load the shared encryption key once (if present) so every bundle
-		// operation in any subcommand is encrypted/decrypted transparently.
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// Apply a saved Tailscale CLI path override, if any.
+			if st := settings.Load(); st.TailscalePath != "" {
+				ts.SetBinPath(st.TailscalePath)
+			}
+			// Load the shared encryption key once (if present) so every bundle
+			// operation in any subcommand is encrypted/decrypted transparently.
 			if v, err := vault.Load(vault.DefaultPath()); err == nil {
 				bundle.UseVault(v)
 			}
@@ -41,6 +49,9 @@ func newRootCmd() *cobra.Command {
 		newAppsCmd(),
 		newMatrixCmd(),
 		newKeyCmd(),
+		newVersionCmd(),
+		newDoctorCmd(),
+		newConfigCmd(),
 	)
 	return root
 }

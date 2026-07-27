@@ -49,9 +49,10 @@ jobs:
           mkdir -p dist
           EXT=""; LDF=""
           if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; LDF="-H windowsgui"; fi
+          VLD="-X github.com/bhargav/synckit/internal/version.Version=${GITHUB_REF_NAME}"
           BASE="${{ matrix.goos }}-${{ matrix.arch }}"
-          go build -o "dist/synckit-$BASE$EXT" ./cmd/synckit
-          go build -ldflags "$LDF" -o "dist/synckit-gui-$BASE$EXT" ./cmd/synckit-gui
+          go build -ldflags "$VLD" -o "dist/synckit-$BASE$EXT" ./cmd/synckit
+          go build -ldflags "$VLD $LDF" -o "dist/synckit-gui-$BASE$EXT" ./cmd/synckit-gui
 
       # Hand-build synckit.app (Info.plist + .icns) and wrap it in a
       # drag-to-Applications .dmg. Unsigned: first launch needs right-click→Open.

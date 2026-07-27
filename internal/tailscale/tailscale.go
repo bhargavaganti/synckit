@@ -7,6 +7,7 @@ package tailscale
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,15 +47,18 @@ func Available() bool {
 	return err == nil
 }
 
-// SelfIP returns this machine's first tailnet IPv4 address.
+// SelfIP returns this machine's first tailnet IPv4 address. It validates that
+// the CLI actually returned an IP: the macOS App Store Tailscale sometimes
+// prints an error to stdout with exit 0 ("The Tailscale GUI failed to start"),
+// which must NOT be mistaken for an address to bind.
 func SelfIP() (string, error) {
 	out, err := run("ip", "-4")
 	if err != nil {
 		return "", err
 	}
 	ip := strings.TrimSpace(strings.SplitN(out, "\n", 2)[0])
-	if ip == "" {
-		return "", fmt.Errorf("no tailnet IPv4 (is tailscale up?)")
+	if net.ParseIP(ip) == nil {
+		return "", fmt.Errorf("tailscale did not return a valid IP (got %q) — is tailscale up, and is this a working CLI?", firstLine(out))
 	}
 	return ip, nil
 }
@@ -115,58 +119,115 @@ func toPeer(n *node, self bool) Peer {
 }
 
 var (
-	binOnce sync.Once
-	binPath string
+	binOnce     sync.Once
+	autoBin     string
+	explicitBin string // user override (Settings / SetBinPath), highest priority
 )
 
-// resolveBin finds the tailscale CLI. It checks PATH first, then the standard
-// per-OS install locations — critical on macOS, where the CLI ships INSIDE the
-// app bundle and is not on PATH by default (so a plain "tailscale" exec fails
-// and no peers are ever found), and on Windows where it lives under Program
-// Files. GUI apps launched from Finder/Explorer also get a minimal PATH, so we
-// must probe absolute paths regardless.
+// SetBinPath sets an explicit path to the tailscale CLI, overriding all
+// auto-detection. Empty clears the override. Used by the Settings UI.
+func SetBinPath(p string) { explicitBin = strings.TrimSpace(p) }
+
+// candidates lists the standard per-OS install locations we probe.
+func candidates() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			"/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+			"/usr/local/bin/tailscale",
+			"/opt/homebrew/bin/tailscale",
+		}
+	case "windows":
+		pf := os.Getenv("ProgramFiles")
+		if pf == "" {
+			pf = `C:\Program Files`
+		}
+		return []string{filepath.Join(pf, "Tailscale", "tailscale.exe")}
+	default:
+		return []string{"/usr/bin/tailscale", "/usr/local/bin/tailscale", "/var/lib/tailscale/tailscale"}
+	}
+}
+
+// resolveBin finds the tailscale CLI in priority order: explicit override, the
+// SYNCKIT_TAILSCALE env var, PATH, then the standard per-OS locations. The
+// per-OS probe is critical on macOS (CLI ships inside the app bundle, off PATH)
+// and for GUI apps launched from Finder/Explorer (minimal PATH).
 func resolveBin() string {
+	if explicitBin != "" {
+		return explicitBin
+	}
+	if e := strings.TrimSpace(os.Getenv("SYNCKIT_TAILSCALE")); e != "" {
+		return e
+	}
 	binOnce.Do(func() {
 		if p, err := exec.LookPath("tailscale"); err == nil {
-			binPath = p
+			autoBin = p
 			return
 		}
-		var candidates []string
-		switch runtime.GOOS {
-		case "darwin":
-			candidates = []string{
-				"/Applications/Tailscale.app/Contents/MacOS/Tailscale",
-				"/usr/local/bin/tailscale",
-				"/opt/homebrew/bin/tailscale",
-			}
-		case "windows":
-			pf := os.Getenv("ProgramFiles")
-			if pf == "" {
-				pf = `C:\Program Files`
-			}
-			candidates = []string{filepath.Join(pf, "Tailscale", "tailscale.exe")}
-		default: // linux and others
-			candidates = []string{
-				"/usr/bin/tailscale",
-				"/usr/local/bin/tailscale",
-				"/var/lib/tailscale/tailscale", // some packaged installs
-			}
-		}
-		for _, c := range candidates {
+		for _, c := range candidates() {
 			if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
-				binPath = c
+				autoBin = c
 				return
 			}
 		}
 	})
-	return binPath
+	return autoBin
+}
+
+// BinPath returns the resolved tailscale binary path (or "" if none found).
+func BinPath() string { return resolveBin() }
+
+// Diagnose returns human-readable diagnostics for the Settings/debug console.
+func Diagnose() string {
+	var b strings.Builder
+	bin := resolveBin()
+	if bin == "" {
+		fmt.Fprintln(&b, "tailscale CLI: NOT FOUND")
+		fmt.Fprintln(&b, "checked: PATH")
+		for _, c := range candidates() {
+			fmt.Fprintf(&b, "  %s\n", c)
+		}
+		fmt.Fprintln(&b, "→ set the path in Settings, or export SYNCKIT_TAILSCALE=/path/to/tailscale")
+		return b.String()
+	}
+	fmt.Fprintf(&b, "tailscale CLI: %s\n", bin)
+	if out, err := run("version"); err == nil {
+		fmt.Fprintf(&b, "version: %s\n", firstLine(out))
+	} else {
+		fmt.Fprintf(&b, "version: ERROR %v\n", err)
+	}
+	if ip, err := SelfIP(); err == nil {
+		fmt.Fprintf(&b, "tailnet IP: %s\n", ip)
+	} else {
+		fmt.Fprintf(&b, "tailnet IP: ERROR %v (is `tailscale up`?)\n", err)
+	}
+	if peers, err := Peers(false); err == nil {
+		fmt.Fprintf(&b, "peers found: %d\n", len(peers))
+		for _, p := range peers {
+			state := "offline"
+			if p.Online {
+				state = "online"
+			}
+			fmt.Fprintf(&b, "  %-20s %-16s %-8s %s\n", p.Host, p.IP, p.OS, state)
+		}
+	} else {
+		fmt.Fprintf(&b, "peers: ERROR %v\n", err)
+	}
+	return b.String()
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return strings.TrimSpace(s)
 }
 
 func run(args ...string) (string, error) {
 	bin := resolveBin()
 	if bin == "" {
 		return "", fmt.Errorf("tailscale CLI not found on PATH or standard install locations " +
-			"(on macOS, symlink it: sudo ln -s /Applications/Tailscale.app/Contents/MacOS/Tailscale /usr/local/bin/tailscale)")
+			"(set the path in Settings, or export SYNCKIT_TAILSCALE=/path/to/tailscale)")
 	}
 	out, err := exec.Command(bin, args...).Output()
 	if err != nil {

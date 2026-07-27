@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -20,10 +21,12 @@ import (
 	"github.com/bhargav/synckit/internal/bundle"
 	"github.com/bhargav/synckit/internal/daemon"
 	"github.com/bhargav/synckit/internal/service"
+	"github.com/bhargav/synckit/internal/settings"
 	"github.com/bhargav/synckit/internal/syncengine"
 	ts "github.com/bhargav/synckit/internal/tailscale"
 	"github.com/bhargav/synckit/internal/transport"
 	"github.com/bhargav/synckit/internal/vault"
+	"github.com/bhargav/synckit/internal/version"
 )
 
 type gui struct {
@@ -40,6 +43,9 @@ type gui struct {
 	peersBox   *fyne.Container
 	matrixBox  *fyne.Container
 
+	tsPathEntry *widget.Entry
+	diagText    *widget.Entry
+
 	installed []string // installed app ids, for snapshot selection
 }
 
@@ -47,6 +53,10 @@ func main() {
 	spool := service.DefaultSpoolDir()
 	if err := os.MkdirAll(spool, 0o755); err != nil {
 		log.Fatal(err)
+	}
+	// Apply a saved Tailscale CLI path override, if any.
+	if st := settings.Load(); st.TailscalePath != "" {
+		ts.SetBinPath(st.TailscalePath)
 	}
 	// Enable encryption at rest/in transit if a shared key is configured.
 	if v, err := vault.Load(vault.DefaultPath()); err == nil {
@@ -84,7 +94,7 @@ func main() {
 
 // build lays out the window: header, tabs, status bar.
 func (g *gui) build() fyne.CanvasObject {
-	title := widget.NewLabelWithStyle("🔄  synckit", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	title := widget.NewLabelWithStyle("🔄  synckit "+version.String(), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	refreshBtn := widget.NewButtonWithIcon("Refresh", theme.ViewRefreshIcon(), g.refresh)
 	header := container.NewBorder(nil, nil,
 		container.NewHBox(title, g.machine),
@@ -106,6 +116,7 @@ func (g *gui) build() fyne.CanvasObject {
 		container.NewTabItemWithIcon("Local bundles", theme.StorageIcon(), container.NewScroll(g.bundlesBox)),
 		container.NewTabItemWithIcon("Tailnet", theme.RadioButtonIcon(), container.NewScroll(g.peersBox)),
 		container.NewTabItemWithIcon("Sync map", theme.GridIcon(), container.NewScroll(g.matrixBox)),
+		container.NewTabItemWithIcon("Settings", theme.SettingsIcon(), g.buildSettings()),
 	)
 	tabs.SetTabLocation(container.TabLocationTop)
 
@@ -117,6 +128,72 @@ func (g *gui) build() fyne.CanvasObject {
 		container.NewBorder(nil, nil, g.daemonLbl, nil, g.status))
 
 	return container.NewBorder(top, footer, nil, nil, tabs)
+}
+
+// buildSettings is the Settings tab: the Tailscale CLI path override and a
+// diagnostics console so you can see exactly what synckit detects.
+func (g *gui) buildSettings() fyne.CanvasObject {
+	st := settings.Load()
+	g.tsPathEntry = widget.NewEntry()
+	g.tsPathEntry.SetPlaceHolder("auto-detect (leave blank)")
+	g.tsPathEntry.SetText(st.TailscalePath)
+
+	browse := widget.NewButtonWithIcon("Browse", theme.FolderOpenIcon(), func() {
+		dialog.ShowFileOpen(func(rc fyne.URIReadCloser, err error) {
+			if err != nil || rc == nil {
+				return
+			}
+			g.tsPathEntry.SetText(rc.URI().Path())
+			rc.Close()
+		}, g.win)
+	})
+	save := widget.NewButtonWithIcon("Save", theme.DocumentSaveIcon(), func() {
+		s := settings.Load()
+		s.TailscalePath = strings.TrimSpace(g.tsPathEntry.Text)
+		if err := settings.Save(s); err != nil {
+			g.setStatus("Save failed: " + err.Error())
+			return
+		}
+		ts.SetBinPath(s.TailscalePath)
+		g.setStatus("Saved Tailscale path.")
+		g.runDiagnostics()
+		g.refresh()
+	})
+	save.Importance = widget.HighImportance
+
+	g.diagText = widget.NewMultiLineEntry()
+	g.diagText.Wrapping = fyne.TextWrapOff
+	g.diagText.SetText("Click “Run diagnostics”.")
+	g.diagText.Disable() // read-only console
+	diagBtn := widget.NewButtonWithIcon("Run diagnostics", theme.SearchIcon(), g.runDiagnostics)
+
+	info := widget.NewLabel(fmt.Sprintf("synckit %s\nspool: %s", version.String(), g.svc.SpoolDir))
+	hint := widget.NewLabel("Set this if peers aren't found. On macOS the CLI is often at:\n" +
+		"/Applications/Tailscale.app/Contents/MacOS/Tailscale")
+	hint.TextStyle = fyne.TextStyle{Italic: true}
+
+	top := container.NewVBox(
+		info,
+		widget.NewSeparator(),
+		widget.NewLabelWithStyle("Tailscale CLI path", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		hint,
+		container.NewBorder(nil, nil, nil, container.NewHBox(browse, save), g.tsPathEntry),
+		widget.NewSeparator(),
+		container.NewBorder(nil, nil, widget.NewLabelWithStyle("Diagnostics", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), diagBtn, nil),
+	)
+	return container.NewBorder(top, nil, nil, nil, container.NewScroll(g.diagText))
+}
+
+// runDiagnostics fills the console with what synckit sees for Tailscale.
+func (g *gui) runDiagnostics() {
+	g.setStatus("Running diagnostics…")
+	go func() {
+		out := "synckit " + version.String() + "\ntailscale bin: " + ts.BinPath() + "\n\n" + ts.Diagnose()
+		fyne.Do(func() {
+			g.diagText.SetText(out)
+			g.status.SetText("Ready.")
+		})
+	}()
 }
 
 // startEngine runs the seamless sync loop: auto-snapshot on close + periodic,

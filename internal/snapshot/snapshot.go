@@ -4,7 +4,6 @@ package snapshot
 import (
 	"fmt"
 	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -62,10 +61,14 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 					fmt.Sprintf("%s/%s: app is running (close it or use --force)", ad.ID(), inst.ID))
 				continue
 			}
-			entry, err := captureInstance(w, ad, inst)
+			entry, skipped, err := captureInstance(w, ad, inst)
 			if err != nil {
 				w.Abort()
 				return nil, fmt.Errorf("capture %s/%s: %w", ad.ID(), inst.ID, err)
+			}
+			if skipped > 0 {
+				res.Skipped = append(res.Skipped,
+					fmt.Sprintf("%s/%s: %d file(s) unreadable/locked (app may be running)", ad.ID(), inst.ID, skipped))
 			}
 			entries = append(entries, entry)
 		}
@@ -86,9 +89,10 @@ func Run(adapters []app.Adapter, opts Options) (*Result, error) {
 
 // captureInstance walks one instance's tree, honoring the adapter's excludes,
 // and streams each file into the bundle under payload/<app>/<inst>/...
-func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance) (bundle.AppEntry, error) {
+func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance) (bundle.AppEntry, int, error) {
 	version, _ := ad.Version(inst)
 	excludes := ad.Exclude()
+	skipped := 0
 
 	entry := bundle.AppEntry{
 		App:       ad.ID(),
@@ -122,11 +126,10 @@ func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance) (bundl
 		arcRel := path.Join(entry.Path, relSlash)
 		sum, size, err := w.AddFile(p, arcRel)
 		if err != nil {
-			// A file vanishing mid-walk (temp/lock) is non-fatal; skip it.
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
+			// A file that vanished, is locked by a running app, or is otherwise
+			// unreadable is skipped — one bad file must not abort the snapshot.
+			skipped++
+			return nil
 		}
 		entry.Checksums[relSlash] = sum
 		entry.Bytes += size
@@ -134,10 +137,10 @@ func captureInstance(w *bundle.Writer, ad app.Adapter, inst app.Instance) (bundl
 		return nil
 	})
 	if err != nil {
-		return bundle.AppEntry{}, err
+		return bundle.AppEntry{}, skipped, err
 	}
 	entry.Fingerprint = bundle.Fingerprint(entry.Checksums)
-	return entry, nil
+	return entry, skipped, nil
 }
 
 // matchesAny reports whether rel matches any glob. Patterns ending in "/**"
