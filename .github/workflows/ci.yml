@@ -34,15 +34,25 @@ jobs:
             libgl1-mesa-dev xorg-dev libxkbcommon-dev \
             libxxf86vm-dev libwayland-dev
 
-      # Separate steps so a per-step failure pinpoints CLI vs GUI vs tests.
-      - name: Build CLI (pure Go)
-        run: go build ./cmd/synckit
+      # Run everything under one shell, tracing each command and capturing all
+      # output to build.log, which is uploaded as an artifact (publicly
+      # downloadable) so failures are diagnosable without repo sign-in.
+      - name: Build & test (captured)
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            set -ex
+            go env GOOS GOARCH CGO_ENABLED CC
+            go build ./cmd/synckit
+            go vet ./internal/...
+            go test ./internal/... -v
+            go build ./cmd/synckit-gui
+          } 2>&1 | tee build.log
 
-      - name: Vet library packages
-        run: go vet ./internal/...
-
-      - name: Test library packages
-        run: go test ./internal/...
-
-      - name: Build GUI (native, CGO)
-        run: go build ./cmd/synckit-gui
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildlog-${{ matrix.os }}
+          path: build.log
