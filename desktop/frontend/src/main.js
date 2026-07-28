@@ -525,6 +525,27 @@ async function renderSettings(ov) {
     catch (err) { errorModal('Failed', err); }
   };
   brCard.appendChild(lb);
+
+  // Auto-repair: rebuild Chrome's profile registry after a restore.
+  const repairRow = h('div', 'row');
+  repairRow.style.marginTop = '12px';
+  const repairBtn = h('button', 'btn', '🔧 Repair Chrome profiles');
+  repairBtn.onclick = async () => {
+    modal({
+      title: 'Repair Chrome profiles?',
+      body: 'Rebuilds Chrome\'s profile list (Local State) from the profile folders on disk, so restored profiles appear in Chrome. Quit Chrome fully first. Local State is backed up.',
+      confirmText: 'Repair', onConfirm: async () => {
+        try {
+          const n = await App.RepairChrome();
+          toast('Repaired: registered ' + n + ' profile(s). Open Chrome to check.', 'ok');
+        } catch (e) { errorModal('Repair failed', e); }
+      },
+    });
+  };
+  repairRow.appendChild(repairBtn);
+  repairRow.appendChild(h('span', 'sub', ' — run after importing a Chrome bundle if profiles don\'t appear'));
+  brCard.appendChild(repairRow);
+
   p.appendChild(brCard);
 
   // Ignore rules

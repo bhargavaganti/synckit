@@ -226,6 +226,10 @@ func (a *App) SetChromeSafeMode(on bool) error {
 	return settings.Save(st)
 }
 
+// RepairChrome rebuilds Chrome's profile registry from the profile folders on
+// disk, so restored profiles show up in Chrome. Returns how many were added.
+func (a *App) RepairChrome() (int, error) { return app.RepairChrome() }
+
 func (a *App) ChromeWholeUserData() bool { return settings.Load().ChromeWholeUserData }
 
 func (a *App) SetChromeWholeUserData(on bool) error {
