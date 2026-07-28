@@ -230,14 +230,6 @@ func (a *App) SetChromeSafeMode(on bool) error {
 // disk, so restored profiles show up in Chrome. Returns how many were added.
 func (a *App) RepairChrome() (int, error) { return app.RepairChrome() }
 
-func (a *App) ChromeWholeUserData() bool { return settings.Load().ChromeWholeUserData }
-
-func (a *App) SetChromeWholeUserData(on bool) error {
-	st := settings.Load()
-	st.ChromeWholeUserData = on
-	return settings.Save(st)
-}
-
 // AppIDs returns the built-in app ids, for the ignore editor.
 func (a *App) AppIDs() []string {
 	var ids []string

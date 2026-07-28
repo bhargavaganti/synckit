@@ -1,13 +1,10 @@
 package app
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/bhargav/synckit/internal/bundle"
-	"github.com/bhargav/synckit/internal/settings"
 )
 
 // Chrome is the hardest of the three. Under "User Data" each "Profile N"
@@ -54,62 +51,18 @@ func (c *Chrome) Detect() ([]Instance, error) {
 		return nil, nil
 	}
 
-	// Whole-User-Data mode: one instance covering Local State + every profile,
-	// so Chrome actually recognises restored profiles.
-	if settings.Load().ChromeWholeUserData {
-		return []Instance{{
-			App:   c.ID(),
-			ID:    "User Data",
-			Label: "Chrome (whole profile folder)",
-			Root:  base,
-		}}, nil
-	}
-
-	// Friendly names, if available.
-	names := map[string]string{}
-	if b, err := os.ReadFile(filepath.Join(base, "Local State")); err == nil {
-		var ls localState
-		if json.Unmarshal(b, &ls) == nil {
-			for dir, info := range ls.Profile.InfoCache {
-				names[dir] = info.Name
-			}
-		}
-	}
-
-	entries, err := os.ReadDir(base)
-	if err != nil {
-		return nil, err
-	}
-	var out []Instance
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		dir := e.Name()
-		// Skip synckit restore backups (…-<ts>.bak) so they aren't shown as profiles.
-		if strings.Contains(dir, ".bak") {
-			continue
-		}
-		// A profile dir is "Default" or "Profile N"; verify by its Preferences file.
-		if dir != "Default" && !hasPrefix(dir, "Profile ") {
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(base, dir, "Preferences")); err != nil {
-			continue
-		}
-		label := dir
-		if n, ok := names[dir]; ok && n != "" {
-			label = dir + " (" + n + ")"
-		}
-		out = append(out, Instance{
-			App:   c.ID(),
-			ID:    dir,
-			Label: "Chrome " + label,
-			Root:  filepath.Join(base, dir),
-		})
-	}
-	return out, nil
+	// Chrome is ALWAYS synced as one whole unit — the entire User Data folder
+	// (Local State + every profile). Per-profile copying never works across
+	// machines (Chrome ignores folders not in its Local State registry), so
+	// there's only this mode, and both machines are automatically consistent.
+	return []Instance{{
+		App:   c.ID(),
+		ID:    "User Data",
+		Label: "Chrome (whole profile folder)",
+		Root:  base,
+	}}, nil
 }
+
 
 // Running: Chrome's SingletonLock lives at the User Data root (not per-profile),
 // so any open Chrome window locks all profiles. We check the parent dir.
@@ -157,14 +110,12 @@ func (c *Chrome) Exclude() []string {
 		// volatile / lock / temp / restore backups
 		"Singleton*", "*.bak/**", "*.tmp", "*-journal", "*-wal", "*-shm",
 	}
-	// Lean whole-folder mode: also drop the multi-GB per-site storage so a
+	// Lean by default: drop the multi-GB per-site storage so a whole-folder
 	// snapshot carries profiles/bookmarks/settings/extensions but stays small.
-	if settings.Load().ChromeWholeUserData {
-		ex = append(ex,
-			"IndexedDB/**", "Local Storage/**", "Session Storage/**",
-			"Media Cache/**", "Network/**", "Sessions/**",
-		)
-	}
+	ex = append(ex,
+		"IndexedDB/**", "Local Storage/**", "Session Storage/**",
+		"Media Cache/**", "Network/**", "Sessions/**",
+	)
 	return ex
 }
 

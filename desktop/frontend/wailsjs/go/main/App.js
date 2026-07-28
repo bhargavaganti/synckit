@@ -58,6 +58,10 @@ export function RemoveIgnore(arg1, arg2) {
   return window['go']['main']['App']['RemoveIgnore'](arg1, arg2);
 }
 
+export function RepairChrome() {
+  return window['go']['main']['App']['RepairChrome']();
+}
+
 export function Restore(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Restore'](arg1, arg2, arg3, arg4);
 }

@@ -506,15 +506,7 @@ async function renderSettings(ov) {
     'Chrome resists cross-machine profile copying — its settings are HMAC-signed and passwords are OS-encrypted, ' +
     'so a full copy won\'t stick on another machine. Use Chrome\'s own account Sync for that; synckit is best for ' +
     'same-machine backup. Firefox copies more fully.'));
-  const whole = await App.ChromeWholeUserData();
-  const wlb = h('label', 'ck');
-  wlb.style.marginTop = '10px';
-  wlb.innerHTML = '<input type="checkbox" ' + (whole ? 'checked' : '') + '> Chrome: sync the <b>whole profile folder</b> (Local State + all profiles) — this is what makes copied profiles actually appear in Chrome. Passwords still don\'t cross OSes.';
-  wlb.querySelector('input').onchange = async (e) => {
-    try { await App.SetChromeWholeUserData(e.target.checked); toast('Chrome whole-folder mode ' + (e.target.checked ? 'ON' : 'OFF') + ' — re-snapshot Chrome (and do the same on your other machine)', 'ok'); refresh(); }
-    catch (err) { errorModal('Failed', err); }
-  };
-  brCard.appendChild(wlb);
+  brCard.appendChild(h('div', 'sub', '✓ Chrome always syncs as one whole folder (lean) — so profiles register on the other machine. Both machines are automatically consistent; just snapshot with Chrome closed.'));
 
   const safe = await App.ChromeSafeMode();
   const lb = h('label', 'ck');
